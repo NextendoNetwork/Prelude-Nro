@@ -1,0 +1,5 @@
+/build/
+*.elf
+*.nacp
+*.map
+nextendo.nro

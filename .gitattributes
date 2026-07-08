@@ -1,0 +1,3 @@
+# Fichiers embarques dans le romfs et poses tels quels sur la SD : AUCUNE
+# conversion de fin de ligne (byte-fidelite = patches .ips, exefs.nsp, certs, mitm.lst).
+romfs/sd/** -text

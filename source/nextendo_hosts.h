@@ -1,0 +1,43 @@
+// ============================================================
+//  Nextendo Network — contenu du fichier hosts Atmosphere DNS-MITM
+//  Mode NEXTENDO : redirige TOUT Nintendo -> nos serveurs, bloque le reste.
+//  Ecrit par l'app dans /atmosphere/hosts/sysmmc.txt ET /atmosphere/hosts/emummc.txt.
+//
+//  Regle Atmosphere : la DERNIERE ligne qui matche gagne.
+//    '*' = 0+ caracteres   '%' = lp1
+//  Les wildcards *.nintendo.* couvrent deja TOUS les hotes compte/jeu decouverts
+//  (accounts, m-lp1.baas, capi.lp1.op2, dragons, scsi, god.penne, e0d67c509...baas).
+// ============================================================
+#ifndef NEXTENDO_HOSTS_H
+#define NEXTENDO_HOSTS_H
+
+static const char NEXTENDO_HOSTS[] =
+    "# ============================================================\n"
+    "#  NEXTENDO NETWORK - Atmosphere DNS-MITM (mode NEXTENDO)\n"
+    "#  Genere par l'app homebrew Nextendo. Derniere ligne qui matche gagne.\n"
+    "# ============================================================\n"
+    "\n"
+    "# --- 1) Tout Nintendo -> serveurs Nextendo (VPS) ---\n"
+    "51.178.29.194    *.nintendo.net\n"
+    "51.178.29.194    *.nintendo.com\n"
+    "51.178.29.194    *.nintendowifi.net\n"
+    "51.178.29.194    *.nintendo.co.jp\n"
+    "\n"
+    "# --- 2) NAT-check #2 : IP differente de nncs1 (sinon MK8 test-103) ---\n"
+    "178.105.220.158  nncs2-*.n.n.srv.nintendo.net\n"
+    "\n"
+    "# --- 3) ANTI-BAN : telemetrie / rapport d'erreur -> trou noir (en dernier) ---\n"
+    "0.0.0.0          receive-%.dg.srv.nintendo.net\n"
+    "0.0.0.0          receive-%.er.srv.nintendo.net\n"
+    "# d4c (MAJ systeme) -> NOTRE VPS : le handler nx-account repond \"aucune MAJ\"\n"
+    "# (version 1073742904 <= console) -> plus de popup. (IP reelle Nintendo repondait\n"
+    "# \"MAJ dispo\" -> popup recurrent ; null-route 0.0.0.0 -> erreur de connexion MAJ.)\n"
+    "51.178.29.194    *.d4c.nintendo.net\n";
+
+// Chemins cibles sur la carte SD.
+#define NEXTENDO_HOSTS_SYSMMC "sdmc:/atmosphere/hosts/sysmmc.txt"
+#define NEXTENDO_HOSTS_EMUMMC "sdmc:/atmosphere/hosts/emummc.txt"
+#define NEXTENDO_HOSTS_DIR    "sdmc:/atmosphere/hosts"
+#define NEXTENDO_SETTINGS_INI "sdmc:/atmosphere/config/system_settings.ini"
+
+#endif // NEXTENDO_HOSTS_H
