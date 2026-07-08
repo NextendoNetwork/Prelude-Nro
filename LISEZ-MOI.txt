@@ -1,0 +1,79 @@
+================================================================
+  NEXTENDO  —  l'app homebrew (.nro) pour basculer ta Switch
+  entre le reseau NEXTENDO et le reseau NINTENDO normal.
+================================================================
+
+CE QUE C'EST
+------------
+Une petite app (.nro), facon Pretendo sur 3DS, avec un menu :
+
+        Quel compte charger ?
+        [ NEXTENDO ]   [ NINTENDO ]
+
+  - NEXTENDO  : redirige tout le trafic Nintendo vers les serveurs Nextendo
+                (et bloque le reste = anti-ban), puis redemarre.
+  - NINTENDO  : enleve la redirection -> ta Switch redevient 100% normale,
+                puis redemarre.
+
+Tu choisis a chaque fois quel "monde" charger. Rien de definitif : tu peux
+rebasculer quand tu veux.
+
+
+PREREQUIS (une seule fois)
+--------------------------
+  - Switch en CFW Atmosphere (>= 0.18.0).
+  - Le patch  disable_ca_verification  dans  sd:/atmosphere/exefs_patches/
+    (le meme que pour les captures S3). Sans lui, le mode NEXTENDO ne pourra
+    pas valider le certificat HTTPS de nos serveurs.
+    -> Le mode NINTENDO, lui, n'en a pas besoin.
+
+
+INSTALLATION
+------------
+  1. Copie  nextendo.nro  dans  sd:/switch/   (ou sd:/switch/nextendo/).
+  2. Remets la SD dans la Switch, boot en CFW.
+  3. Ouvre le Homebrew Menu (hbmenu) : maintiens R en lancant un jeu, ou
+     ouvre l'Album avec R maintenu.
+  4. Lance "Nextendo".
+
+
+UTILISATION
+-----------
+  - Gauche / Droite : choisir NEXTENDO ou NINTENDO.
+        L'app explique sous les cartes ce que fait le mode selectionne.
+  - A : valider  ->  une POPUP DE CONFIRMATION apparait (rappel : la console va
+        redemarrer, ferme tes jeux).
+            A : confirmer et redemarrer.
+            B : annuler et revenir au choix.
+  - B ou + : quitter sans rien changer.
+
+  Apres le reboot, tu es dans le monde choisi.
+    NEXTENDO -> lance Splatoon 2 / MK8 / SSBU et va en ligne sur Nextendo.
+    NINTENDO -> tout est normal (ton vrai compte Nintendo, eShop, etc.).
+
+
+CE QUE L'APP MODIFIE (transparence)
+-----------------------------------
+  Mode NEXTENDO :
+    - ecrit   sd:/atmosphere/hosts/sysmmc.txt   et   .../emummc.txt
+              (le fichier de redirection DNS)
+    - met dans sd:/atmosphere/config/system_settings.ini, section [atmosphere] :
+              enable_dns_mitm           = u8!0x1
+              add_defaults_to_dns_hosts = u8!0x0
+    - redemarre.
+  Mode NINTENDO :
+    - retire la redirection (renomme les hosts en .bak, enable_dns_mitm = 0)
+    - redemarre.
+
+  -> Aucune modification irreversible : tu peux toujours revenir en arriere.
+
+
+NOTE COMPTE  (isolation)
+------------------------
+En mode NEXTENDO tu te connectes a un compte NEXTENDO NETWORK, separe de ton
+compte Nintendo. Les serveurs Nextendo appliquent un VERROU D'ISOLATION :
+seul un compte Nextendo a acces aux services (online, collection d'icones NSO,
+amis, jeux NEX). Tout compte Nintendo reel (ou compte local) est REFUSE des le
+rafraichissement de session -> ton vrai compte Nintendo n'est jamais valide ni
+touche en mode NEXTENDO -> aucune corruption de session possible.
+================================================================
