@@ -15,7 +15,10 @@ void ui_exit(void);
 void ui_draw_picker(int selection, int current, int focus, const char *status, int updVer);
 
 // Popup de CONFIRMATION avant d'appliquer + redemarrer (A = confirmer, B = annuler).
-void ui_draw_confirm(int selection);
+// warnNoEmummc : console sans emuMMC (CFW sur la memoire interne). Le mode NINTENDO ne peut alors
+// offrir AUCUNE protection d'identite -> l'ecran de confirmation le dit franchement. Passe par
+// main.c (detecte une seule fois) : sonder spl a chaque frame serait absurde.
+void ui_draw_confirm(int selection, bool warnNoEmummc);
 
 // Ecran d'explication "Planning en ligne Splatoon 2" (A = installer, B = retour).
 void ui_draw_s2_info(void);

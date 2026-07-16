@@ -21,7 +21,10 @@ ROMFS    := romfs
 
 APP_TITLE   := Prelude
 APP_AUTHOR  := Nextendo Network
-APP_VERSION := 1.0.0
+# Règle de version : 1.0.N où N = NEXTENDO_BUILD (source/nextendo_update.h).
+# La version AFFICHÉE dans hbmenu (NACP), le build interne (auto-MAJ) et le tag GitHub
+# doivent TOUJOURS être alignés. Build 12 -> 1.0.12 -> release v1.0.12.
+APP_VERSION := 1.0.12
 APP_ICON    := icon.jpg
 
 #---------------------------------------------------------------------------------

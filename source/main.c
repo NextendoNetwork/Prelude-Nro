@@ -35,6 +35,23 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    // La trace repart de zero a chaque lancement : elle documente LA session courante (celle dont
+    // l'utilisateur nous parle) et ne grossit pas indefiniment. Conservee en release : le gel du
+    // build 10 n'a jamais ete explique, donc si un joueur le revit, ce fichier est notre seul temoin.
+    remove(NEXTENDO_TRACE_PATH);
+    nextendo_trace("10 main: ui_init ok");
+
+    // Une console sans emuMMC fait tourner le CFW sur la memoire interne, donc avec son vrai
+    // identifiant : blank_prodinfo_emummc, la protection posee par le mode NINTENDO, n'a alors
+    // aucun effet. On previent au lieu de laisser croire a une protection inexistante.
+    // Detecte UNE fois (splInitialize/splExit), pas a chaque frame.
+    nextendo_trace("11 avant detect_boot (splInitialize)");
+    BootType boot = nextendo_detect_boot();
+    nextendo_trace(boot == BOOT_SYSMMC  ? "12 detect_boot = SYSMMC (pas d emuMMC)"
+                 : boot == BOOT_EMUMMC  ? "12 detect_boot = EMUMMC"
+                                        : "12 detect_boot = INCONNU (spl a echoue)");
+    bool noEmummc = (boot == BOOT_SYSMMC);
+
     int  current = nextendo_current_mode();
     int  sel    = (current == CHOICE_NEXTENDO) ? CHOICE_NINTENDO : CHOICE_NEXTENDO;
     int  focus  = FOCUS_MODE;
@@ -46,11 +63,19 @@ int main(int argc, char **argv) {
 
     // Verif de mise a jour au demarrage (affiche d'abord le picker pour ne pas rester noir).
     ui_draw_picker(sel, current, focus, NULL, 0);
+    nextendo_trace("13 picker dessine, avant update_check (reseau)");
     NextendoUpdate upd = nextendo_update_check();
+    nextendo_trace(upd.available ? "14 update_check: MAJ DISPO -> homebrew verrouille (A inactif)"
+                                 : "14 update_check: a jour -> A actif");
+    nextendo_trace("15 entree dans la boucle principale");
 
+    bool tracedLoop = false, tracedConfirm = false;
     while (appletMainLoop()) {
         padUpdate(&pad);
         u64 k = padGetButtonsDown(&pad);
+        // Une seule fois : prouve que la boucle tourne ET que l'entree remonte (si A ne fait rien
+        // alors que cette ligne est absente, c'est padUpdate/HID qui est mort, pas la logique).
+        if (!tracedLoop && k) { nextendo_trace("16 premiere touche detectee dans la boucle"); tracedLoop = true; }
 
         if (screen == SCREEN_PICKER) {
             if (state == 0) {
@@ -65,7 +90,7 @@ int main(int argc, char **argv) {
                         status[0] = 0;
                     }
                     if (k & HidNpadButton_A) {
-                        if (focus == FOCUS_MODE) { state = 1; status[0] = 0; }
+                        if (focus == FOCUS_MODE) { nextendo_trace("17 A picker -> ecran de confirmation"); state = 1; status[0] = 0; }
                         else { screen = SCREEN_S2_INFO; }
                     }
                 }
@@ -76,8 +101,11 @@ int main(int argc, char **argv) {
                 if (k & (HidNpadButton_B | HidNpadButton_Plus)) {
                     state = 0;
                 } else if (k & HidNpadButton_A) {
+                    nextendo_trace("19 A confirmation -> appel de apply_*");
                     bool ok = (sel == CHOICE_NEXTENDO) ? nextendo_apply_nextendo()
                                                        : nextendo_apply_nintendo();
+                    nextendo_trace(ok ? "28 apply a renvoye OK -> reboot"
+                                      : "28 apply a renvoye ECHEC -> message d erreur");
                     if (ok) {
                         snprintf(status, sizeof(status),
                                  sel == CHOICE_NEXTENDO
@@ -94,7 +122,11 @@ int main(int argc, char **argv) {
                         state = 0;
                     }
                 }
-                if (state == 1) ui_draw_confirm(sel);
+                if (state == 1) {
+                    if (!tracedConfirm) { nextendo_trace("18 avant ui_draw_confirm"); }
+                    ui_draw_confirm(sel, noEmummc);
+                    if (!tracedConfirm) { nextendo_trace("18b ui_draw_confirm rendu ok"); tracedConfirm = true; }
+                }
             }
 
         } else if (screen == SCREEN_S2_INFO) {

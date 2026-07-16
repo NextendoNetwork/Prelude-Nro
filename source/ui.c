@@ -268,7 +268,7 @@ void ui_draw_picker(int selection, int current, int focus, const char *status, i
 }
 
 // Popup de CONFIRMATION plein ecran avant d'appliquer + redemarrer.
-void ui_draw_confirm(int selection) {
+void ui_draw_confirm(int selection, bool warnNoEmummc) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
     u32 sw = st / sizeof(u32), bg = packColor(C_BG);
@@ -277,9 +277,12 @@ void ui_draw_confirm(int selection) {
 
     bool nx = (selection == CHOICE_NEXTENDO);
     u32 acc = packColor(nx ? C_BLUE : C_RED);
+    // L'avertissement ne concerne que le mode NINTENDO : c'est le seul ou la console parle aux
+    // vrais serveurs. En mode NEXTENDO le DNS-MITM confine tout chez nous, l'identite ne fuit pas.
+    bool warn = warnNoEmummc && !nx;
 
-    // carte centrale avec liseré coloré
-    int cw = 820, ch = 380, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
+    // carte centrale avec liseré coloré ; agrandie pour loger l'avertissement
+    int cw = 820, ch = warn ? 500 : 380, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
     roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
     roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
 
@@ -291,7 +294,22 @@ void ui_draw_confirm(int selection) {
     drawCF(b, st, s_reg, cx, cyy + 188, 22, packColor(C_SUBTLE),
            nx ? "Au redemarrage : connexion aux serveurs Nextendo Network."
               : "Au redemarrage : retour aux serveurs officiels Nintendo.");
-    drawCF(b, st, s_reg, cx, cyy + 218, 22, packColor(C_SUBTLE),
+
+    if (warn) {
+        u32 wc = packColor(C_WARN);
+        drawCF(b, st, s_bold, cx, cyy + 240, 25, wc,
+               "ATTENTION : cette console n'a pas d'emuMMC.");
+        drawCF(b, st, s_reg, cx, cyy + 278, 21, packColor(C_SUBTLE),
+               "Le CFW tourne sur la memoire interne, avec ton vrai identifiant console.");
+        drawCF(b, st, s_reg, cx, cyy + 306, 21, packColor(C_SUBTLE),
+               "Aucune protection d'identite n'est possible sans casser l'eShop.");
+        drawCF(b, st, s_reg, cx, cyy + 334, 21, packColor(C_SUBTLE),
+               "Aller EN LIGNE sur le vrai Nintendo depuis ce mode reste a tes risques.");
+        drawCF(b, st, s_reg, cx, cyy + 362, 21, packColor(C_SUBTLE),
+               "(La telemetrie, elle, reste bloquee.)");
+    }
+
+    drawCF(b, st, s_reg, cx, cyy + (warn ? 400 : 218), 22, packColor(C_SUBTLE),
            "Ferme tout jeu en cours avant de confirmer.");
 
     // rappel des touches, en bas de la carte

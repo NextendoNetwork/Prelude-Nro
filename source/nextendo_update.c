@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/stat.h>
 
 #include "nextendo_update.h"
 #include "nextendo_net.h"
@@ -63,17 +64,34 @@ nextendo_update_result nextendo_update_apply(long expectedSize) {
     if (status != 200 || len < 4096) { free(body); return NUP_NET_FAIL; }   // un .nro fait > 4 Ko
     if (expectedSize > 0 && (long)len != expectedSize) { free(body); return NUP_SIZE_FAIL; }
 
+    // Ecrit d'abord dans un .new temporaire (cree /switch si la carte ne l'a pas).
     FILE *f = fopen(NRO_TMP, "wb");
+    if (!f) {
+        mkdir("sdmc:/switch", 0777);
+        f = fopen(NRO_TMP, "wb");
+    }
     if (!f) { free(body); return NUP_WRITE_FAIL; }
     bool ok = (fwrite(body, 1, len, f) == len);
+    fflush(f);
     fclose(f);
-    free(body);
-    if (!ok) { remove(NRO_TMP); return NUP_WRITE_FAIL; }
+    if (!ok) { remove(NRO_TMP); free(body); return NUP_WRITE_FAIL; }
     fsdevCommitDevice("sdmc");
 
     // Remplace l'ancien .nro (le courant tourne depuis la RAM -> ecrasement sans risque).
+    // rename() echoue sur certaines cartes SD (fatfs) : dans ce cas on ecrit NRO_PATH
+    // directement (on garde 'body' jusqu'ici pour ce secours) au lieu de laisser
+    // l'utilisateur sans .nro. C'etait la cause du "impossible d'ecrire sur la carte SD".
     remove(NRO_PATH);
-    if (rename(NRO_TMP, NRO_PATH) != 0) return NUP_WRITE_FAIL;
+    if (rename(NRO_TMP, NRO_PATH) != 0) {
+        FILE *g = fopen(NRO_PATH, "wb");
+        if (!g) { free(body); return NUP_WRITE_FAIL; }
+        bool ok2 = (fwrite(body, 1, len, g) == len);
+        fflush(g);
+        fclose(g);
+        remove(NRO_TMP);
+        if (!ok2) { free(body); return NUP_WRITE_FAIL; }
+    }
+    free(body);
     fsdevCommitDevice("sdmc");
     return NUP_OK;
 }

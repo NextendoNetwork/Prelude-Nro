@@ -115,3 +115,85 @@ unsigned char *net_http_get(const char *ip, int port, const char *path, size_t *
     *out_len = blen;
     return body;
 }
+
+// Ouvre une connexion + envoie la requete GET. Renvoie le fd (>=0) ou -1. (factorise pour le stream.)
+static int net_open_get(const char *ip, int port, const char *path) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+    struct timeval tv = { .tv_sec = 20, .tv_usec = 0 };
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    struct sockaddr_in sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons((u16)port);
+    sa.sin_addr.s_addr = inet_addr(ip);
+    int fl = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+    int rc = connect(fd, (struct sockaddr *)&sa, sizeof(sa));
+    if (rc < 0 && errno == EINPROGRESS) {
+        fd_set wf; FD_ZERO(&wf); FD_SET(fd, &wf);
+        struct timeval ct = { .tv_sec = 6, .tv_usec = 0 };
+        if (select(fd + 1, NULL, &wf, NULL, &ct) <= 0) { close(fd); return -1; }
+        int soerr = 0; socklen_t sl = sizeof(soerr);
+        getsockopt(fd, SOL_SOCKET, SO_ERROR, &soerr, &sl);
+        if (soerr != 0) { close(fd); return -1; }
+    } else if (rc < 0) { close(fd); return -1; }
+    fcntl(fd, F_SETFL, fl);
+    char req[512];
+    int rl = snprintf(req, sizeof(req),
+                      "GET %s HTTP/1.1\r\nHost: %s:%d\r\nUser-Agent: NextendoHomebrew\r\n"
+                      "Accept: */*\r\nConnection: close\r\n\r\n", path, ip, port);
+    int sent = 0;
+    while (sent < rl) {
+        ssize_t n = send(fd, req + sent, rl - sent, 0);
+        if (n <= 0) { close(fd); return -1; }
+        sent += (int)n;
+    }
+    return fd;
+}
+
+long net_http_get_to_file(const char *ip, int port, const char *path, FILE *out, int *out_status) {
+    *out_status = 0;
+    int fd = net_open_get(ip, port, path);
+    if (fd < 0) return -1;
+
+    unsigned char rbuf[32768];
+    unsigned char hdr[8192];
+    size_t hlen = 0;
+    int status = 0;
+    int inBody = 0;
+    long bodyBytes = 0;
+    for (;;) {
+        ssize_t n = recv(fd, rbuf, sizeof(rbuf), 0);
+        if (n <= 0) break;
+        if (inBody) {
+            if (fwrite(rbuf, 1, (size_t)n, out) != (size_t)n) { close(fd); *out_status = status; return -2; }
+            bodyBytes += n;
+            continue;
+        }
+        // Toujours dans les en-tetes : on accumule dans hdr jusqu'a "\r\n\r\n".
+        size_t i = 0;
+        while (i < (size_t)n && hlen < sizeof(hdr)) {
+            hdr[hlen++] = rbuf[i++];
+            if (hlen >= 4 && hdr[hlen-4]=='\r' && hdr[hlen-3]=='\n' && hdr[hlen-2]=='\r' && hdr[hlen-1]=='\n')
+                break;
+        }
+        if (hlen >= 4 && hdr[hlen-4]=='\r' && hdr[hlen-3]=='\n' && hdr[hlen-2]=='\r' && hdr[hlen-1]=='\n') {
+            for (size_t k = 0; k + 3 < hlen && k < 64; k++) {
+                if (hdr[k] == ' ') { status = (hdr[k+1]-'0')*100 + (hdr[k+2]-'0')*10 + (hdr[k+3]-'0'); break; }
+            }
+            inBody = 1;
+            // Les octets restants de rbuf (a partir de i) sont le DEBUT du corps -> on les ecrit.
+            if ((size_t)n > i) {
+                size_t rem = (size_t)n - i;
+                if (fwrite(rbuf + i, 1, rem, out) != rem) { close(fd); *out_status = status; return -2; }
+                bodyBytes += (long)rem;
+            }
+        }
+    }
+    close(fd);
+    *out_status = status;
+    if (!inBody) return -1;
+    return bodyBytes;
+}

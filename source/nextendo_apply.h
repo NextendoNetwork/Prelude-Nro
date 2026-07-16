@@ -7,6 +7,13 @@
 
 typedef enum { BOOT_UNKNOWN = -1, BOOT_SYSMMC = 0, BOOT_EMUMMC = 1 } BootType;
 
+// Ecrit une etape dans sdmc:/prelude_trace.txt et COMMIT immediatement. Le commit par ligne coute
+// cher, mais c'est tout l'interet : sans lui les ecritures SD restent en cache et une coupure au
+// POWER les perd — c'est precisement ce qui rendait un blocage invisible sur la carte. Ainsi la
+// derniere ligne presente = la derniere etape franchie, meme apres un arret force.
+void nextendo_trace(const char *step);
+#define NEXTENDO_TRACE_PATH "sdmc:/prelude_trace.txt"
+
 // Detecte le storage de boot (cosmetique : on ecrit les 2 fichiers de toute facon).
 BootType nextendo_detect_boot(void);
 

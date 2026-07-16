@@ -16,6 +16,7 @@ typedef struct { u8 r, g, b, a; } Color;
 #define C_CARD     COL(0x1E, 0x22, 0x2B)  // carte
 #define C_CARD_SEL COL(0x26, 0x2C, 0x38)  // carte sélectionnée
 #define C_GREEN    COL(0x36, 0xCE, 0x73)  // badge "CHARGÉ" / succès
+#define C_WARN     COL(0xF5, 0xA6, 0x23)  // ambre : avertissement (console sans emuMMC)
 #define C_S2       COL(0xF0, 0x2D, 0x7D)  // rose Splatoon (bouton planning S2)
 
 #define FB_W 1280
