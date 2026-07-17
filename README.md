@@ -58,7 +58,7 @@ If you are running your own server, the addresses Prelude redirects to live in
 Copyright (C) 2026 Nextendo Network.
 
 Prelude is free software, licensed under the **GNU Affero General Public License, version 3 or
-later** — the same licence [Pretendo](https://github.com/PretendoNetwork) uses. You may use, study,
+later**. You may use, study,
 share and modify it. If you distribute a modified version, or run one as a network service, you
 must release your changes under the same licence.
 
