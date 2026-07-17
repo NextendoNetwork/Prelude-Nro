@@ -49,4 +49,27 @@ void nextendo_diag_network(void);
 // Redemarre la console (ne revient pas si succes ; bpcRebootSystem).
 Result nextendo_reboot(void);
 
+// --- Scan de configuration pour l'ecran de revue ---
+#define REVIEW_MAX 6
+
+typedef struct {
+    const char *file;        // "exosphere.ini"
+    const char *setting;     // "blank_prodinfo_emummc"
+    char        old_val[28]; // valeur actuelle
+    char        new_val[28]; // valeur cible
+    const char *summary;     // explication courte (FR)
+    bool        changed;     // true si la valeur va effectivement changer
+} ReviewItem;
+
+typedef struct ConfigReview {
+    ReviewItem items[REVIEW_MAX];
+    int        count;
+    int        mode;         // CHOICE_NEXTENDO ou CHOICE_NINTENDO
+} ConfigReview;
+
+// Scanne les fichiers de configuration Atmosphere et remplit review.
+// mode = CHOICE_NEXTENDO ou CHOICE_NINTENDO (la cible).
+// Retourne false si lecture impossible (SD absente).
+bool nextendo_scan_config(int mode, ConfigReview *review);
+
 #endif // NEXTENDO_APPLY_H

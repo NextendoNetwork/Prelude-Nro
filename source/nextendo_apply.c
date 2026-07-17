@@ -36,6 +36,7 @@
 
 #include "nextendo_apply.h"
 #include "nextendo_hosts.h"
+#include "ui_theme.h"
 
 #define SETTINGS_DIR "sdmc:/atmosphere/config"
 #define NEXTENDO_EXOSPHERE_INI "sdmc:/exosphere.ini"
@@ -361,6 +362,48 @@ static bool fileExists(const char *path) {
     return stat(path, &st) == 0;
 }
 
+// Lit une valeur depuis un fichier INI. Cherche [section], puis key=value.
+// Retourne true si la cle a ete trouvee, false sinon (fichier absent, section inconnue, etc.).
+static bool readIniKey(const char *path, const char *section, const char *key, char *buf, size_t bufsize) {
+    FILE *f = fopen(path, "r");
+    if (!f) return false;
+
+    char line[256];
+    bool in_sec = false;
+
+    while (fgets(line, sizeof(line), f)) {
+        size_t len = strlen(line);
+        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) line[--len] = '\0';
+        char *t = line;
+        while (*t == ' ' || *t == '\t') t++;
+        if (*t == ';' || *t == '#') continue;
+        if (*t == '[') {
+            in_sec = false;
+            char *cl = strchr(t, ']');
+            if (cl) { *cl = '\0'; in_sec = (strcmp(t + 1, section) == 0); }
+            continue;
+        }
+        if (in_sec) {
+            char *eq = strchr(t, '=');
+            if (eq) {
+                *eq = '\0';
+                char *ke = eq - 1;
+                while (ke >= t && (*ke == ' ' || *ke == '\t')) ke--;
+                *(ke + 1) = '\0';
+                if (strcmp(t, key) == 0) {
+                    char *vs = eq + 1;
+                    while (*vs == ' ' || *vs == '\t') vs++;
+                    strncpy(buf, vs, bufsize - 1); buf[bufsize - 1] = '\0';
+                    fclose(f);
+                    return true;
+                }
+            }
+        }
+    }
+    fclose(f);
+    return false;
+}
+
 // --- Provisionne le stack cert-trust Nextendo (romfs du .nro -> SD) : disable_ca_verification
 //     (ssl : jeux / auth / BAAS -> notre VPS) + disable_browser_ca_verification + cabundle + rootCA.pem
 //     (WebView "Lier un compte"). Tout est gate par build-id firmware -> seul ce qui matche la console
@@ -544,4 +587,104 @@ Result nextendo_reboot(void) {
     rc = bpcRebootSystem();              // ne revient pas si succes
     bpcExit();
     return rc;
+}
+
+bool nextendo_scan_config(int mode, ConfigReview *review) {
+    memset(review, 0, sizeof(*review));
+    review->mode = mode;
+    int idx = 0;
+    char cur[64];
+
+    if (mode == CHOICE_NEXTENDO) {
+        ReviewItem *it = &review->items[idx];
+        it->file = "exosphere.ini";
+        it->setting = "blank_prodinfo_emummc";
+        it->summary = "PRODINFO reel -> certificat console valide (corrige 2123-0011)";
+        if (readIniKey(NEXTENDO_EXOSPHERE_INI, "exosphere", "blank_prodinfo_emummc", cur, sizeof(cur)))
+            strncpy(it->old_val, cur, sizeof(it->old_val));
+        else
+            snprintf(it->old_val, sizeof(it->old_val), "absent");
+        snprintf(it->new_val, sizeof(it->new_val), "0");
+        it->changed = (strcmp(it->old_val, "0") != 0);
+        idx++;
+
+        it = &review->items[idx];
+        it->file = "system_settings.ini";
+        it->setting = "enable_dns_mitm";
+        it->summary = "Active le DNS-MITM : tout Nintendo -> serveurs Nextendo";
+        if (readIniKey(NEXTENDO_SETTINGS_INI, "atmosphere", "enable_dns_mitm", cur, sizeof(cur)))
+            snprintf(it->old_val, sizeof(it->old_val), "%s", cur);
+        else
+            snprintf(it->old_val, sizeof(it->old_val), "absent");
+        snprintf(it->new_val, sizeof(it->new_val), "u8!0x1");
+        it->changed = (strstr(it->old_val, "0x1") == NULL);
+        idx++;
+
+        it = &review->items[idx];
+        it->file = "hosts/sysmmc.txt";
+        it->setting = "redirections Nextendo";
+        it->summary = "Redirige tous les services Nintendo vers le VPS Nextendo";
+        snprintf(it->old_val, sizeof(it->old_val), "%s",
+                 fileExists(NEXTENDO_HOSTS_SYSMMC) ? "present" : "absent");
+        snprintf(it->new_val, sizeof(it->new_val), "present (Nextendo)");
+        it->changed = !fileHas(NEXTENDO_HOSTS_SYSMMC, "51.178.29.194");
+        idx++;
+
+        it = &review->items[idx];
+        it->file = "hosts/emummc.txt";
+        it->setting = "redirections Nextendo";
+        it->summary = "Redirige tous les services Nintendo vers le VPS Nextendo";
+        snprintf(it->old_val, sizeof(it->old_val), "%s",
+                 fileExists(NEXTENDO_HOSTS_EMUMMC) ? "present" : "absent");
+        snprintf(it->new_val, sizeof(it->new_val), "present (Nextendo)");
+        it->changed = !fileHas(NEXTENDO_HOSTS_EMUMMC, "51.178.29.194");
+        idx++;
+    } else {
+        ReviewItem *it = &review->items[idx];
+        it->file = "exosphere.ini";
+        it->setting = "blank_prodinfo_emummc";
+        it->summary = "PRODINFO masque -> anti-ban sur Nintendo reel";
+        if (readIniKey(NEXTENDO_EXOSPHERE_INI, "exosphere", "blank_prodinfo_emummc", cur, sizeof(cur)))
+            strncpy(it->old_val, cur, sizeof(it->old_val));
+        else
+            snprintf(it->old_val, sizeof(it->old_val), "absent");
+        snprintf(it->new_val, sizeof(it->new_val), "1");
+        it->changed = (strcmp(it->old_val, "1") != 0);
+        idx++;
+
+        it = &review->items[idx];
+        it->file = "system_settings.ini";
+        it->setting = "enable_dns_mitm";
+        it->summary = "DNS-MITM garde actif pour la telemetrie (add_defaults=1)";
+        if (readIniKey(NEXTENDO_SETTINGS_INI, "atmosphere", "enable_dns_mitm", cur, sizeof(cur)))
+            snprintf(it->old_val, sizeof(it->old_val), "%s", cur);
+        else
+            snprintf(it->old_val, sizeof(it->old_val), "absent");
+        snprintf(it->new_val, sizeof(it->new_val), "u8!0x1 (+ defaults)");
+        it->changed = true;
+        idx++;
+
+        it = &review->items[idx];
+        it->file = "hosts/sysmmc.txt";
+        it->setting = "fichier hosts";
+        it->summary = "Supprime les redirections Nextendo -> DNS normal";
+        snprintf(it->old_val, sizeof(it->old_val), "%s",
+                 fileExists(NEXTENDO_HOSTS_SYSMMC) ? "present" : "absent");
+        snprintf(it->new_val, sizeof(it->new_val), "supprime");
+        it->changed = fileExists(NEXTENDO_HOSTS_SYSMMC);
+        idx++;
+
+        it = &review->items[idx];
+        it->file = "hosts/emummc.txt";
+        it->setting = "fichier hosts";
+        it->summary = "Supprime les redirections Nextendo -> DNS normal";
+        snprintf(it->old_val, sizeof(it->old_val), "%s",
+                 fileExists(NEXTENDO_HOSTS_EMUMMC) ? "present" : "absent");
+        snprintf(it->new_val, sizeof(it->new_val), "supprime");
+        it->changed = fileExists(NEXTENDO_HOSTS_EMUMMC);
+        idx++;
+    }
+
+    review->count = idx;
+    return true;
 }
