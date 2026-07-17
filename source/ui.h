@@ -35,6 +35,13 @@ void ui_draw_picker(int selection, int current, int focus, const char *status, i
 // main.c (detecte une seule fois) : sonder spl a chaque frame serait absurde.
 void ui_draw_confirm(int selection, bool warnNoEmummc);
 
+// Ecran de REVUE des modifications avant application. Affiche la config actuelle, la cible,
+// et une explication pour chaque changement. A = appliquer, B = annuler.
+// warnNoEmummc : ajoute un avertissement pour les consoles sans emuMMC (mode Nintendo uniquement).
+// Requires ConfigReview from nextendo_apply.h.
+struct ConfigReview;
+void ui_draw_review(const struct ConfigReview *review, bool warnNoEmummc);
+
 // Ecran d'explication "Planning en ligne Splatoon 2" (A = installer, B = retour).
 void ui_draw_s2_info(void);
 

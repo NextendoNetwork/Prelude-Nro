@@ -75,6 +75,8 @@ int main(int argc, char **argv) {
     char status[160] = {0};
     char rTitle[64] = {0}, rMsg[192] = {0};
     bool rOk = false;
+    ConfigReview s_review;
+    bool s_review_scanned = false;
 
     // Verif de mise a jour au demarrage (affiche d'abord le picker pour ne pas rester noir).
     ui_draw_picker(sel, current, focus, NULL, 0);
@@ -88,7 +90,7 @@ int main(int argc, char **argv) {
     socketExit();
     nextendo_trace("15 entree dans la boucle principale");
 
-    bool tracedLoop = false, tracedConfirm = false;
+    bool tracedLoop = false;
     while (appletMainLoop()) {
         padUpdate(&pad);
         u64 k = padGetButtonsDown(&pad);
@@ -109,7 +111,7 @@ int main(int argc, char **argv) {
                         status[0] = 0;
                     }
                     if (k & HidNpadButton_A) {
-                        if (focus == FOCUS_MODE) { nextendo_trace("17 A picker -> ecran de confirmation"); state = 1; status[0] = 0; }
+                        if (focus == FOCUS_MODE) { nextendo_trace("17 A picker -> ecran de revue"); state = 1; s_review_scanned = false; status[0] = 0; }
                         else { screen = SCREEN_S2_INFO; }
                     }
                 }
@@ -120,7 +122,7 @@ int main(int argc, char **argv) {
                 if (k & (HidNpadButton_B | HidNpadButton_Plus)) {
                     state = 0;
                 } else if (k & HidNpadButton_A) {
-                    nextendo_trace("19 A confirmation -> appel de apply_*");
+                    nextendo_trace("19 A revue -> appel de apply_*");
                     bool ok = (sel == CHOICE_NEXTENDO) ? nextendo_apply_nextendo()
                                                        : nextendo_apply_nintendo();
                     nextendo_trace(ok ? "28 apply a renvoye OK -> reboot"
@@ -142,9 +144,12 @@ int main(int argc, char **argv) {
                     }
                 }
                 if (state == 1) {
-                    if (!tracedConfirm) { nextendo_trace("18 avant ui_draw_confirm"); }
-                    ui_draw_confirm(sel, noEmummc);
-                    if (!tracedConfirm) { nextendo_trace("18b ui_draw_confirm rendu ok"); tracedConfirm = true; }
+                    if (!s_review_scanned) {
+                        nextendo_scan_config(sel, &s_review);
+                        s_review_scanned = true;
+                        nextendo_trace("18 config scanne -> affichage revue");
+                    }
+                    ui_draw_review(&s_review, noEmummc);
                 }
             }
 

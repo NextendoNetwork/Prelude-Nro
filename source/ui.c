@@ -28,6 +28,7 @@
 
 #include "ui.h"
 #include "ui_theme.h"
+#include "nextendo_apply.h"
 
 #define IMG 200                 // taille des .rgba (200x200)
 #define IMG_BYTES (IMG * IMG * 4)
@@ -331,6 +332,68 @@ void ui_draw_confirm(int selection, bool warnNoEmummc) {
     int by = cyy + ch - 46;
     drawCF(b, st, s_semi, cx - 150, by, 26, packColor(C_GREEN), "A : Confirmer");
     drawCF(b, st, s_semi, cx + 150, by, 26, packColor(C_SUBTLE), "B : Annuler");
+
+    framebufferEnd(&s_fb);
+}
+
+// ------- Ecran de REVUE des modifications (remplace ui_draw_confirm) -------
+void ui_draw_review(const ConfigReview *review, bool warnNoEmummc) {
+    u32 st;
+    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
+    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
+    for (int y = 0; y < FB_H; y++)
+        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+
+    bool nx = (review->mode == CHOICE_NEXTENDO);
+    u32 acc = packColor(nx ? C_BLUE : C_RED);
+    bool warn = warnNoEmummc && !nx;
+
+    int cw = 880, ch = warn ? 580 : 540, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
+    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
+    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
+
+    int cx = FB_W / 2;
+    drawCF(b, st, s_bold, cx, cyy + 58, 32, packColor(C_TITLE),
+           nx ? "Passer en mode NEXTENDO ?" : "Passer en mode NINTENDO ?");
+    drawCF(b, st, s_semi, cx, cyy + 102, 21, packColor(C_SUBTLE),
+           "Modifications a appliquer :");
+
+    int iy = cyy + 136;
+    for (int i = 0; i < review->count && i < REVIEW_MAX; i++) {
+        const ReviewItem *it = &review->items[i];
+        int ix = cxx + 40;
+        u32 col = it->changed ? acc : packColor(C_SUBTLE);
+
+        char header[128];
+        snprintf(header, sizeof(header), "%s  %s", it->file, it->setting);
+        drawF(b, st, s_semi, ix, iy + 18, 19, col, header);
+
+        char vline[64];
+        if (it->changed)
+            snprintf(vline, sizeof(vline), "%s -> %s", it->old_val, it->new_val);
+        else
+            snprintf(vline, sizeof(vline), "= %s (OK)", it->new_val);
+        drawF(b, st, s_reg, ix, iy + 40, 16,
+              packColor(it->changed ? C_TITLE : C_SUBTLE), vline);
+
+        drawF(b, st, s_reg, ix, iy + 60, 15, packColor(C_SUBTLE), it->summary);
+        iy += 76;
+    }
+
+    if (warn) {
+        u32 wc = packColor(C_WARN);
+        drawF(b, st, s_bold, cx, iy + 6, 20, wc,
+               "ATTENTION : pas d'emuMMC -> blank_prodinfo SANS EFFET");
+        drawF(b, st, s_reg, cx, iy + 30, 17, packColor(C_SUBTLE),
+               "Le CFW tourne sur la memoire interne avec ton VRAI identifiant.");
+        drawF(b, st, s_reg, cx, iy + 52, 17, packColor(C_SUBTLE),
+               "Aller en ligne sur Nintendo depuis ce mode reste a tes risques.");
+        iy += 80;
+    }
+
+    int by = cyy + ch - 42;
+    drawCF(b, st, s_semi, cx - 150, by, 23, packColor(C_GREEN), "A : Appliquer");
+    drawCF(b, st, s_semi, cx + 150, by, 23, packColor(C_SUBTLE), "B : Annuler");
 
     framebufferEnd(&s_fb);
 }
