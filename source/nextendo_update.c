@@ -70,43 +70,46 @@ NextendoUpdate nextendo_update_check(void) {
 
 nextendo_update_result nextendo_update_apply(long expectedSize) {
     socketInitializeDefault();
-    size_t len = 0;
-    int status = 0;
-    unsigned char *body = net_http_get(UP_IP, UP_PORT, UP_DOWNLOAD, &len, &status);
-    socketExit();
 
-    if (!body) return NUP_NET_FAIL;
-    if (status != 200 || len < 4096) { free(body); return NUP_NET_FAIL; }   // un .nro fait > 4 Ko
-    if (expectedSize > 0 && (long)len != expectedSize) { free(body); return NUP_SIZE_FAIL; }
-
-    // Ecrit d'abord dans un .new temporaire (cree /switch si la carte ne l'a pas).
+    // Ouvre le fichier temporaire AVANT l'appel HTTP (cible du streaming).
     FILE *f = fopen(NRO_TMP, "wb");
     if (!f) {
         mkdir("sdmc:/switch", 0777);
         f = fopen(NRO_TMP, "wb");
     }
-    if (!f) { free(body); return NUP_WRITE_FAIL; }
-    bool ok = (fwrite(body, 1, len, f) == len);
-    fflush(f);
+    if (!f) { socketExit(); return NUP_WRITE_FAIL; }
+
+    // Streame la reponse HTTP directement sur le disque (evite le buffer en RAM).
+    int status = 0;
+    long len = net_http_get_to_file(UP_IP, UP_PORT, UP_DOWNLOAD, f, &status);
     fclose(f);
-    if (!ok) { remove(NRO_TMP); free(body); return NUP_WRITE_FAIL; }
+    socketExit();
+
+    if (len == -2) { remove(NRO_TMP); return NUP_WRITE_FAIL; }
+    if (len < 0)   { remove(NRO_TMP); return NUP_NET_FAIL; }
+    if (status != 200 || len < 4096) { remove(NRO_TMP); return NUP_NET_FAIL; }
+    if (expectedSize > 0 && len != expectedSize) { remove(NRO_TMP); return NUP_SIZE_FAIL; }
     fsdevCommitDevice("sdmc");
 
     // Remplace l'ancien .nro (le courant tourne depuis la RAM -> ecrasement sans risque).
-    // rename() echoue sur certaines cartes SD (fatfs) : dans ce cas on ecrit NRO_PATH
-    // directement (on garde 'body' jusqu'ici pour ce secours) au lieu de laisser
-    // l'utilisateur sans .nro. C'etait la cause du "impossible d'ecrire sur la carte SD".
+    // rename() echoue sur certaines cartes SD (fatfs) : dans ce cas on copie le fichier
+    // temporaire vers NRO_PATH (sans buffer en RAM, on lit depuis le .new sur le disque).
     remove(NRO_PATH);
     if (rename(NRO_TMP, NRO_PATH) != 0) {
-        FILE *g = fopen(NRO_PATH, "wb");
-        if (!g) { free(body); return NUP_WRITE_FAIL; }
-        bool ok2 = (fwrite(body, 1, len, g) == len);
-        fflush(g);
-        fclose(g);
+        FILE *src = fopen(NRO_TMP, "rb");
+        if (!src) { remove(NRO_TMP); return NUP_WRITE_FAIL; }
+        FILE *dst = fopen(NRO_PATH, "wb");
+        if (!dst) { fclose(src); remove(NRO_TMP); return NUP_WRITE_FAIL; }
+        char cbuf[16384];
+        size_t n;
+        bool ok = true;
+        while ((n = fread(cbuf, 1, sizeof(cbuf), src)) > 0)
+            if (fwrite(cbuf, 1, n, dst) != n) { ok = false; break; }
+        fclose(src); fclose(dst);
         remove(NRO_TMP);
-        if (!ok2) { free(body); return NUP_WRITE_FAIL; }
+        if (!ok) return NUP_WRITE_FAIL;
     }
-    free(body);
+
     fsdevCommitDevice("sdmc");
     return NUP_OK;
 }

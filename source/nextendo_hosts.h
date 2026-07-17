@@ -49,13 +49,15 @@ static const char NEXTENDO_HOSTS[] =
     "# --- 2) NAT-check #2 : IP differente de nncs1 (sinon MK8 test-103) ---\n"
     "164.132.111.120  nncs2-*.n.n.srv.nintendo.net\n"
     "\n"
-    "# --- 3) ANTI-BAN : telemetrie / rapport d'erreur -> trou noir (en dernier) ---\n"
+    "# --- 3) ANTI-BAN : telemetrie + d4c (MAJ systeme) -> trou noir ---\n"
     "0.0.0.0          receive-%.dg.srv.nintendo.net\n"
     "0.0.0.0          receive-%.er.srv.nintendo.net\n"
-    "# d4c (MAJ systeme) -> NOTRE VPS : le handler nx-account repond \"aucune MAJ\"\n"
-    "# (version 1073742904 <= console) -> plus de popup. (IP reelle Nintendo repondait\n"
-    "# \"MAJ dispo\" -> popup recurrent ; null-route 0.0.0.0 -> erreur de connexion MAJ.)\n"
-    "51.178.29.194    *.d4c.nintendo.net\n";
+    "# d4c (MAJ systeme) -> NULL-ROUTE : le catch-all *.nintendo.net attrape deja d4c mais\n"
+    "# l'envoyer sur notre VPS casse le TLS (disable_ca_verification ne couvre pas les modules\n"
+    "# systeme), ce qui fait apparaitre \"MAJ disponible\" en boucle. En le null-routant, la\n"
+    "# connexion echoue silencieusement -> pas de popup. L'utilisateur repasse en mode NINTENDO\n"
+    "# pour verifier les MAJ systeme officielles.\n"
+    "0.0.0.0          *.d4c.nintendo.net\n";
 
 // Chemins cibles sur la carte SD.
 #define NEXTENDO_HOSTS_SYSMMC "sdmc:/atmosphere/hosts/sysmmc.txt"

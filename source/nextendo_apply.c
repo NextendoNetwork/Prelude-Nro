@@ -95,8 +95,14 @@ static bool iniSetDnsMitm(bool enable, bool addDefaults) {
         fseek(f, 0, SEEK_END); sz = ftell(f); fseek(f, 0, SEEK_SET);
         buf = (char *)malloc(sz + 1);
         if (!buf) { fclose(f); return false; }
-        if (sz > 0) { if (fread(buf, 1, sz, f) != (size_t)sz) { /* tolere */ } }
-        buf[sz] = '\0';
+        if (sz > 0) {
+            size_t nr = fread(buf, 1, sz, f);
+            if (nr != (size_t)sz) {
+                // Lecture partielle -> fichier corrompu, on le traite comme inexistant.
+                free(buf); buf = NULL; sz = 0;
+            }
+        }
+        if (buf) buf[sz] = '\0';
         fclose(f);
     }
 
@@ -176,8 +182,14 @@ static bool iniSetBlankProdinfoEmummc(bool blank) {
         fseek(f, 0, SEEK_END); sz = ftell(f); fseek(f, 0, SEEK_SET);
         buf = (char *)malloc(sz + 1);
         if (!buf) { fclose(f); return false; }
-        if (sz > 0) { if (fread(buf, 1, sz, f) != (size_t)sz) { /* tolere */ } }
-        buf[sz] = '\0';
+        if (sz > 0) {
+            size_t nr = fread(buf, 1, sz, f);
+            if (nr != (size_t)sz) {
+                // Lecture partielle -> fichier corrompu, on le traite comme inexistant.
+                free(buf); buf = NULL; sz = 0;
+            }
+        }
+        if (buf) buf[sz] = '\0';
         fclose(f);
     }
 
@@ -416,10 +428,10 @@ bool nextendo_apply_nextendo(void) {
     // serveur de telemetrie que Nintendo ajouterait plus tard -> le filet d'Atmosphere n'apporte
     // rien ici, et la telemetrie est de toute facon null-routee par nos propres lignes.
     bool i = iniSetDnsMitm(true, false);
-    iniSetBlankProdinfoEmummc(false);    // emuMMC : vrai PRODINFO -> cert device OK (fix 2123-0011)
+    bool p = iniSetBlankProdinfoEmummc(false); // emuMMC : vrai PRODINFO -> cert device OK (fix 2123-0011)
     nextendo_purge_leaks();              // logs DNS-MITM + .bak : l'IP du VPS n'a rien a y faire
     fsdevCommitDevice("sdmc");           // flush SD avant tout reboot
-    return a && b && i;
+    return a && b && i && p;
 }
 
 bool nextendo_apply_nintendo(void) {

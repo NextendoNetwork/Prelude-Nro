@@ -62,7 +62,9 @@ CE QUE L'APP MODIFIE (transparence)
               add_defaults_to_dns_hosts = u8!0x0
     - redemarre.
   Mode NINTENDO :
-    - retire la redirection (renomme les hosts en .bak, enable_dns_mitm = 0)
+    - supprime les hosts Nextendo + desactive la redirection (enable_dns_mitm = 0)
+    - remet le blocage de telemetrie d'Atmosphere
+    - retire tous les patches et certificats Nextendo
     - redemarre.
 
   -> Aucune modification irreversible : tu peux toujours revenir en arriere.

@@ -15,7 +15,7 @@
 
 // ============================================================
 //  Nextendo .nro — musique de fond (BGM en boucle).
-//  Charge romfs:/bgm.ogg et la joue en boucle infinie. Non-fatal :
+//  Charge romfs:/bgm.mp3 et la joue en boucle infinie. Non-fatal :
 //  si le fichier est absent ou l'audio indispo, l'app continue en silence.
 // ============================================================
 #ifndef AUDIO_H
