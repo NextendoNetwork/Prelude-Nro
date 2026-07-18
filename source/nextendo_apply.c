@@ -36,6 +36,7 @@
 
 #include "nextendo_apply.h"
 #include "nextendo_hosts.h"
+#include "nextendo_net.h"
 
 #define SETTINGS_DIR "sdmc:/atmosphere/config"
 #define NEXTENDO_EXOSPHERE_INI "sdmc:/exosphere.ini"
@@ -529,12 +530,58 @@ void nextendo_diag_network(void) {
         nextendo_trace(buf);
     }
 
+    // nncs1 PIA connectivity test (UDP vers le VPS principal, port 10024 + 10025).
+    // Pia a besoin de DEUX sondes distinctes pour terminer le NAT traversal.
+    // Si nncs1 ne repond pas, les jeux PIA (MK8, Splatoon 2/3) tombent en 2618-201.
+    {
+        int fd = socket(AF_INET, SOCK_DGRAM, 0);
+        if (fd >= 0) {
+            struct sockaddr_in sa;
+            memset(&sa, 0, sizeof(sa));
+            sa.sin_family = AF_INET;
+            sa.sin_port = htons(10024);
+            sa.sin_addr.s_addr = inet_addr("51.178.29.194");
+            int rc = connect(fd, (struct sockaddr *)&sa, sizeof(sa));
+            close(fd);
+            snprintf(buf, sizeof(buf), "39 diag: nncs1(PIA):10024 -> %s", rc == 0 ? "socket ok" : "refuse/timeout");
+        } else {
+            snprintf(buf, sizeof(buf), "39 diag: nncs1(PIA):10024 -> SOCKET_ECHEC");
+        }
+        nextendo_trace(buf);
+    }
+    {
+        int fd = socket(AF_INET, SOCK_DGRAM, 0);
+        if (fd >= 0) {
+            struct sockaddr_in sa;
+            memset(&sa, 0, sizeof(sa));
+            sa.sin_family = AF_INET;
+            sa.sin_port = htons(10124);
+            sa.sin_addr.s_addr = inet_addr("51.178.29.194");
+            int rc = connect(fd, (struct sockaddr *)&sa, sizeof(sa));
+            close(fd);
+            snprintf(buf, sizeof(buf), "40 diag: nncs1(PIA):10124 -> %s", rc == 0 ? "socket ok" : "refuse/timeout");
+        } else {
+            snprintf(buf, sizeof(buf), "40 diag: nncs1(PIA):10124 -> SOCKET_ECHEC");
+        }
+        nextendo_trace(buf);
+    }
+
+    // Test connectivite BCAT (HTTP au VPS :8095) — verifie que le serveur de planning S2 est joignable.
+    if (nextendo_current_mode() == 0) { // seulement en mode Nextendo
+        size_t blen = 0;
+        int httpStatus = 0;
+        unsigned char *body = net_http_get("51.178.29.194", 8095, "/api/bcat/0100f8f0000a2000/cache", &blen, &httpStatus);
+        snprintf(buf, sizeof(buf), "41 diag: BCAT %s:%d -> HTTP %d (%zu o)", "51.178.29.194", 8095, httpStatus, blen);
+        nextendo_trace(buf);
+        if (body) free(body);
+    }
+
     // Verifie que les fichiers hosts sont presents (confirme que le mode Nextendo
     // a bien ses redirections ; si absent, le mode Nintendo est actif sans surprise).
     struct stat st;
     bool hasSys = stat(NEXTENDO_HOSTS_SYSMMC, &st) == 0;
     bool hasEmu = stat(NEXTENDO_HOSTS_EMUMMC, &st) == 0;
-    snprintf(buf, sizeof(buf), "38 diag: hosts sysmmc=%d emummc=%d", hasSys, hasEmu);
+    snprintf(buf, sizeof(buf), "42 diag: hosts sysmmc=%d emummc=%d", hasSys, hasEmu);
     nextendo_trace(buf);
 }
 

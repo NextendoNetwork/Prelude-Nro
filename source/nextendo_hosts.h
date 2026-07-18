@@ -15,7 +15,9 @@
 
 // ============================================================
 //  Nextendo Network — contenu du fichier hosts Atmosphere DNS-MITM
-//  Mode NEXTENDO : redirige TOUT Nintendo -> nos serveurs, bloque le reste.
+//  Mode NEXTENDO : redirige la plupart des domaines Nintendo -> nos serveurs,
+//  bloque la telemetrie. Exceptions : d4c (MAJ systeme) et *.nintendowifi.net
+//  (browser conntest) resolvent vers le vrai Nintendo pour eviter popups.
 //  Ecrit par l'app dans /atmosphere/hosts/sysmmc.txt ET /atmosphere/hosts/emummc.txt.
 //
 //  Regle Atmosphere : la DERNIERE ligne qui matche gagne.
@@ -47,6 +49,11 @@ static const char NEXTENDO_HOSTS[] =
     "# valide, et le patch disable_ca_verification ne couvre pas 22.5.0).\n"
     "# Le vrai Nintendo repond \"pas de MAJ\" (22.5.0 est le plus recent) -> pas de popup.\n"
     "# Chaque service critique a son entree explicite ci-dessous.\n"
+    "# NOTE: *.nintendowifi.net a ete RETIRE volontairement car le browser conntest\n"
+    "# (conntest.nintendowifi.net) ne passe pas via le VPS (cherche X-Organization:\n"
+    "# Nintendo). En FW 19.0+, si ce check echoue -> \"This feature is not available\"\n"
+    "# et le browser ne s'ouvre pas. Si Kazu ajoute un handler cote serveur pour\n"
+    "# conntest.nintendowifi.net, on peut remettre le wildcard.\n"
     "51.178.29.194    *.nintendo.com\n"
     "51.178.29.194    *.nintendo.co.jp\n"
     "# Entrees explicites pour les hotes critiques du linking de compte\n"
