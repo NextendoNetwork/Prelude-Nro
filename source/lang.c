@@ -283,6 +283,28 @@ static const char *s_strings[STR_COUNT][4] = {
     [STR_LANG_DEFAULT]      = { "(Default)", "(Defecto)", "(Padrao)", "(Défaut)" },
     [STR_LANG_A_SELECT]     = { "A: Select", "A: Elegir", "A: Selecionar", "A : Choisir" },
     [STR_LANG_B_BACK]       = { "B: Back", "B: Volver", "B: Voltar", "B : Retour" },
+
+    // --- Update confirmation ---
+    [STR_UPD_CONFIRM_TITLE]    = { "Update available",
+                                   "Actualizacion disponible",
+                                   "Atualizacao disponivel",
+                                   "Mise à jour disponible" },
+    [STR_UPD_CONFIRM_VERSION]  = { "New version: build %d",
+                                   "Nueva version: build %d",
+                                   "Nova versao: build %d",
+                                   "Nouvelle version : build %d" },
+    [STR_UPD_CONFIRM_DESC]    = { "Prelude will download and replace itself.",
+                                  "Prelude descargara y se reemplazara a si mismo.",
+                                  "Prelude baixara e substituira a si mesmo.",
+                                  "Prelude va se télécharger et se remplacer." },
+    [STR_UPD_CONFIRM_A]       = { "A: Download and install",
+                                  "A: Descargar e instalar",
+                                  "A: Baixar e instalar",
+                                  "A: Télécharger et installer" },
+    [STR_UPD_CONFIRM_B]       = { "B: Cancel",
+                                  "B: Cancelar",
+                                  "B: Cancelar",
+                                  "B: Annuler" },
 };
 
 // ============================================================

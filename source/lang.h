@@ -111,6 +111,13 @@ typedef enum {
     STR_STATUS_UPDATE_NET_FAIL,     // "Network error"
     STR_STATUS_UPDATE_NET_FAIL_DESC, // "Download failed."
 
+    // --- Update confirmation ---
+    STR_UPD_CONFIRM_TITLE,      // "Update available"
+    STR_UPD_CONFIRM_VERSION,    // "New version: build %d"
+    STR_UPD_CONFIRM_DESC,       // "Prelude will download and replace itself."
+    STR_UPD_CONFIRM_A,          // "A: Download and install"
+    STR_UPD_CONFIRM_B,          // "B: Cancel"
+
     // --- Language menu ---
     STR_LANG_TITLE,             // "Language" / "Idioma"
     STR_LANG_EN,                // "English"

@@ -444,3 +444,36 @@ void ui_draw_lang_menu(int sel) {
 
     framebufferEnd(&s_fb);
 }
+
+// ------- Ecran de confirmation avant mise a jour -------
+void ui_draw_upd_confirm(int buildVer) {
+    u32 st;
+    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
+    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
+    for (int y = 0; y < FB_H; y++)
+        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+
+    u32 acc = packColor(C_BLUE);
+    int cw = 700, ch = 360, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
+    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
+    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
+
+    int cx = FB_W / 2;
+    drawCF(b, st, s_bold, cx, cyy + 70, 36, packColor(C_TITLE),
+           lang_str(STR_UPD_CONFIRM_TITLE));
+
+    char ver[64];
+    snprintf(ver, sizeof(ver), lang_str(STR_UPD_CONFIRM_VERSION), buildVer);
+    drawCF(b, st, s_semi, cx, cyy + 130, 24, acc, ver);
+
+    drawCF(b, st, s_reg, cx, cyy + 180, 22, packColor(C_SUBTLE),
+           lang_str(STR_UPD_CONFIRM_DESC));
+
+    int by = cyy + ch - 50;
+    drawCF(b, st, s_semi, cx - 150, by, 24, packColor(C_GREEN),
+           lang_str(STR_UPD_CONFIRM_A));
+    drawCF(b, st, s_semi, cx + 150, by, 24, packColor(C_SUBTLE),
+           lang_str(STR_UPD_CONFIRM_B));
+
+    framebufferEnd(&s_fb);
+}
