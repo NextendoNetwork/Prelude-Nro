@@ -95,7 +95,7 @@
 //          En 22.5.0 el SSL del VPS no es confiable (disable_ca_verification no cubre 22.5.0),
 //          nim no recibe meta de actualizacion -> popup fantasma. Al resolver d4c al Nintendo real,
 //          22.5.0 se ve como "ultima version" -> sin popup.
-#define NEXTENDO_BUILD 22
+#define NEXTENDO_BUILD 23
 
 typedef struct {
     bool available;   // une version > NEXTENDO_BUILD est dispo
