@@ -95,7 +95,10 @@
 //          En 22.5.0 el SSL del VPS no es confiable (disable_ca_verification no cubre 22.5.0),
 //          nim no recibe meta de actualizacion -> popup fantasma. Al resolver d4c al Nintendo real,
 //          22.5.0 se ve como "ultima version" -> sin popup.
-#define NEXTENDO_BUILD 23
+// build 24 : Fix browser conntest (remove *.nintendowifi.net). Better BCAT error diagnostics with
+//            specific network error codes (connect/timeout/HTTP). Added PIA + BCAT connectivity
+//            tests to network diagnostics.
+#define NEXTENDO_BUILD 24
 
 typedef struct {
     bool available;   // une version > NEXTENDO_BUILD est dispo
