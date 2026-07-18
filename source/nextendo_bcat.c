@@ -189,7 +189,39 @@ nextendo_bcat_result nextendo_bcat_install_s2(void) {
     FsFileSystem fs;
     Result rc = fsOpen_BcatSaveData(&fs, S2_TITLE_ID);
     logf_("fsOpen_BcatSaveData: rc=0x%x", rc);
-    if (R_FAILED(rc)) { free(bundle); if (g_log) fclose(g_log); return NB_MOUNT_FAIL; }
+    if (R_FAILED(rc)) {
+        logf_("tentative creation du save BCAT...");
+        FsSaveDataAttribute attr;
+        memset(&attr, 0, sizeof(attr));
+        attr.application_id   = S2_TITLE_ID;
+        attr.save_data_type   = FsSaveDataType_Bcat;
+
+        FsSaveDataCreationInfo info;
+        memset(&info, 0, sizeof(info));
+        info.save_data_size     = 0x400000;   // 4 Mo
+        info.journal_size       = 0x100000;   // 1 Mo
+        info.owner_id           = S2_TITLE_ID;
+        info.save_data_space_id = FsSaveDataSpaceId_User;
+
+        FsSaveDataMetaInfo meta;
+        memset(&meta, 0, sizeof(meta));
+        meta.size = sizeof(meta);
+        meta.type = FsSaveDataMetaType_None;
+
+        rc = fsCreateSaveDataFileSystem(&attr, &info, &meta);
+        logf_("fsCreateSaveDataFileSystem: rc=0x%x", rc);
+        if (R_SUCCEEDED(rc)) {
+            logf_("save BCAT cree, nouvelle tentative d'ouverture...");
+            rc = fsOpen_BcatSaveData(&fs, S2_TITLE_ID);
+            logf_("fsOpen_BcatSaveData (2): rc=0x%x", rc);
+        }
+        if (R_FAILED(rc)) {
+            logf_("ECHEC: impossible d'ouvrir/creer le save BCAT");
+            free(bundle);
+            if (g_log) fclose(g_log);
+            return NB_MOUNT_FAIL;
+        }
+    }
     if (fsdevMountDevice("bcat", fs) < 0) {
         fsFsClose(&fs);
         free(bundle);
