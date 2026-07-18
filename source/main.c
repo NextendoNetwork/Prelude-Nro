@@ -23,6 +23,8 @@
 // ============================================================
 #include <stdio.h>
 #include <switch.h>
+#include <arpa/inet.h>
+#include <netdb.h>
 
 #include "ui.h"
 #include "audio.h"
