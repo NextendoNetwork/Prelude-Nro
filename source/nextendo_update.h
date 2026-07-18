@@ -91,7 +91,11 @@
 //           Agregado GitHub Actions workflow para builds automáticos.
 // v2.0.1 : Major bump + fix build 20. Hosts actualizados con redirecciones a VPS para penne_ids, dauth, srv.nintendo.net.
 // Anterior v2.0.0 tenia NEXTENDO_BUILD 0, lo que provocaba falso "Mise à jour OBLIGATOIRE" (server v12 > build 0).
-#define NEXTENDO_BUILD 21
+// v2.0.3 : Fix phantom update popup. Remove *.nintendo.net wildcard to let d4c resolve to real Nintendo.
+//          En 22.5.0 el SSL del VPS no es confiable (disable_ca_verification no cubre 22.5.0),
+//          nim no recibe meta de actualizacion -> popup fantasma. Al resolver d4c al Nintendo real,
+//          22.5.0 se ve como "ultima version" -> sin popup.
+#define NEXTENDO_BUILD 22
 
 typedef struct {
     bool available;   // une version > NEXTENDO_BUILD est dispo

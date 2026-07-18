@@ -24,7 +24,7 @@ APP_AUTHOR  := Nextendo Network
 # Règle de version : X.Y.N où N = NEXTENDO_BUILD (source/nextendo_update.h).
 # La version AFFICHÉE dans hbmenu (NACP), le build interne (auto-MAJ) et le tag GitHub
 # doivent TOUJOURS être alignés. Build 20 -> 2.0.1 -> release v2.0.1.
-APP_VERSION := 2.0.2
+APP_VERSION := 2.0.3
 APP_ICON    := icon.jpg
 
 #---------------------------------------------------------------------------------
