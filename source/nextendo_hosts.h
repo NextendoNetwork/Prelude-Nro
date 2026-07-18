@@ -16,8 +16,8 @@
 // ============================================================
 //  Nextendo Network — contenu du fichier hosts Atmosphere DNS-MITM
 //  Mode NEXTENDO : redirige la plupart des domaines Nintendo -> nos serveurs,
-//  bloque la telemetrie. Exceptions : d4c (MAJ systeme) et *.nintendowifi.net
-//  (browser conntest) resolvent vers le vrai Nintendo pour eviter popups.
+//  bloque la telemetrie. Exceptions : d4c (MAJ systeme), ctest (browser conntest)
+//  et *.nintendowifi.net resolvent vers le vrai Nintendo pour eviter popups.
 //  Ecrit par l'app dans /atmosphere/hosts/sysmmc.txt ET /atmosphere/hosts/emummc.txt.
 //
 //  Regle Atmosphere : la DERNIERE ligne qui matche gagne.
@@ -89,7 +89,13 @@ static const char NEXTENDO_HOSTS[] =
     "# L'ancienne redirection vers le VPS cassait en 22.5.0 car le SSL auto-signe n'était\n"
     "# pas accepte par le module SSL systeme (disable_ca_verification ne couvre pas 22.5.0).\n"
     "# NE PAS null-router : nim stocke un flag persistant dans la savedata systeme si la\n"
-    "# reference version est absente, et le popup ne disparait plus meme apres correction.\n";
+    "# reference version est absente, et le popup ne disparait plus meme apres correction.\n"
+    "\n"
+    "# --- 5) ctest.cdn.nintendo.net (browser conntest FW 19+) -> NON REDIRIGE ---\n"
+    "# Ce domaine N'est PAS dans les wildcards. Il resout vers le vrai Nintendo.\n"
+    "# Le browser l'utilise pour verifier la connectivite. S'il echoue ->\n"
+    "# \"This feature is not available\" et le browser ne s'ouvre pas.\n"
+    "# NE JAMAIS ajouter *.nintendo.net ou un wildcard qui attrape ctest.cdn.nintendo.net.\n";
 
 // Chemins cibles sur la carte SD.
 #define NEXTENDO_HOSTS_SYSMMC "sdmc:/atmosphere/hosts/sysmmc.txt"
