@@ -90,7 +90,8 @@
 // build 14 : REVERT del config review screen. Vuelve al ui_draw_confirm original.
 //           Agregado GitHub Actions workflow para builds automáticos.
 // v2.0.0 : Major bump. Hosts actualizados con redirecciones a VPS para penne_ids, dauth, srv.nintendo.net.
-#define NEXTENDO_BUILD 0
+// fix: NEXTENDO_BUILD 20 para evitar que el servidor (v12) bloquee el homebrew con falso "Mise à jour OBLIGATOIRE".
+#define NEXTENDO_BUILD 20
 
 typedef struct {
     bool available;   // une version > NEXTENDO_BUILD est dispo
