@@ -35,7 +35,7 @@
 
 enum {
     SCREEN_PICKER, SCREEN_S2_INFO, SCREEN_S2_PROGRESS, SCREEN_S2_RESULT,
-    SCREEN_UPD_PROGRESS, SCREEN_UPD_RESULT,
+    SCREEN_UPD_CONFIRM, SCREEN_UPD_PROGRESS, SCREEN_UPD_RESULT,
     SCREEN_LANG
 };
 
@@ -117,7 +117,7 @@ int main(int argc, char **argv) {
                 if (upd.available) {
                     // MAJ OBLIGATOIRE : tant qu'une version plus recente existe, le homebrew
                     // est verrouille -> seules l'installation (Y) et la sortie (+/B) sont possibles.
-                    if (k & HidNpadButton_Y) screen = SCREEN_UPD_PROGRESS;
+                    if (k & HidNpadButton_Y) { screen = SCREEN_UPD_CONFIRM; }
                 } else {
                     if (k & (HidNpadButton_AnyLeft | HidNpadButton_AnyRight)) {
                         focus = (focus == FOCUS_MODE) ? FOCUS_S2 : FOCUS_MODE;
@@ -186,6 +186,14 @@ int main(int argc, char **argv) {
                 if (langSel < 3) langSel++;
             }
             if (screen == SCREEN_LANG) ui_draw_lang_menu(langSel);
+
+        } else if (screen == SCREEN_UPD_CONFIRM) {
+            if (k & HidNpadButton_A) {
+                screen = SCREEN_UPD_PROGRESS;
+            } else if (k & (HidNpadButton_B | HidNpadButton_Plus)) {
+                screen = SCREEN_PICKER;
+            }
+            if (screen == SCREEN_UPD_CONFIRM) ui_draw_upd_confirm(upd.latest);
 
         } else if (screen == SCREEN_S2_PROGRESS) {
             ui_draw_progress(lang_str(STR_STATUS_DOWNLOAD_SCHEDULE));
@@ -256,7 +264,7 @@ int main(int argc, char **argv) {
             }
             screen = SCREEN_UPD_RESULT;
 
-        } else { // SCREEN_S2_RESULT / SCREEN_UPD_RESULT
+        } else { // SCREEN_S2_RESULT / SCREEN_UPD_RESULT / SCREEN_UPD_CONFIRM (fallback)
             if (k & (HidNpadButton_A | HidNpadButton_B | HidNpadButton_Plus))
                 screen = SCREEN_PICKER;
             ui_draw_result(rTitle, rMsg, rOk);

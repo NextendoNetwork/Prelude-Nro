@@ -98,7 +98,9 @@
 // build 24 : Fix browser conntest (remove *.nintendowifi.net). Better BCAT error diagnostics with
 //            specific network error codes (connect/timeout/HTTP). Added PIA + BCAT connectivity
 //            tests to network diagnostics.
-#define NEXTENDO_BUILD 24
+// build 25 : Auto-create BCAT save data if missing (fix Splatoon 2 schedule without launching S2).
+//            Update confirmation screen (Y -> ask -> A = install, B = cancel) instead of immediate download.
+#define NEXTENDO_BUILD 25
 
 typedef struct {
     bool available;   // une version > NEXTENDO_BUILD est dispo
