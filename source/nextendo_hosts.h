@@ -34,6 +34,9 @@
 #ifndef NEXTENDO_HOSTS_H
 #define NEXTENDO_HOSTS_H
 
+// CONFIGURATION : 203.0.113.10 / 203.0.113.11 sont des adresses d'EXEMPLE (RFC 5737).
+// Avant de compiler, remplace-les par l'IP de TON serveur Nextendo et de ton second
+// repondeur NAT. Idem BCAT_IP / UP_IP dans nextendo_bcat.c / nextendo_update.c.
 static const char NEXTENDO_HOSTS[] =
     "# ============================================================\n"
     "#  NEXTENDO NETWORK - Atmosphere DNS-MITM (mode NEXTENDO)\n"
