@@ -44,7 +44,7 @@
 #define LOG_PATH    "sdmc:/nextendo_bcat.log"
 
 static FILE *g_log = NULL;
-static Result g_last_rc = 0;   // dernier rc FS, affiché à l'écran en cas d'erreur
+Result g_last_rc = 0;   // dernier rc FS, affiché à l'écran en cas d'erreur
 static void logf_(const char *fmt, ...) {
     if (!g_log) return;
     va_list ap;
@@ -135,6 +135,11 @@ static bool writeBundle(const unsigned char *b, size_t len) {
         memcpy(&dl, b + off, 4);
         off += 4;
         if (off + (size_t)dl > len) return false;
+        // Securite : rejeter les traversees de repertoire et les chemins absolus.
+        if (strstr(rel, "..") != NULL || rel[0] == '/' || strchr(rel, ':') != NULL || rel[0] == '\0') {
+            logf_("  REJETE chemin invalide: \"%s\"", rel);
+            return false;
+        }
         char path[FS_MAX_PATH];
         snprintf(path, sizeof(path), "bcat:/%s", rel);
         if (!writeFileB(path, b + off, dl)) return false;
@@ -247,6 +252,8 @@ nextendo_bcat_result nextendo_bcat_install_s2(void) {
     if (d) { struct dirent *e; while ((e = readdir(d))) if (strcmp(e->d_name,".")&&strcmp(e->d_name,"..")) logf_("  %s", e->d_name); closedir(d); }
 
     clearManaged();      // efface seulement directories.meta + directories/ (garde passphrase.bin etc.)
+    // S'assurer que le dossier directories/ existe (clearManaged le supprime).
+    mkdir("bcat:/directories", 0777);
     bool ok = writeBundle(bundle, blen);
     free(bundle);
 
@@ -258,5 +265,5 @@ nextendo_bcat_result nextendo_bcat_install_s2(void) {
     logf_("=== resultat: %s ===", ok ? "OK" : "ECHEC");
     if (g_log) { fclose(g_log); g_log = NULL; }
 
-    return ok ? NB_OK : NB_WRITE_FAIL;
+    return ok ? NB_OK : NB_BAD_BUNDLE;
 }

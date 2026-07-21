@@ -338,5 +338,7 @@ void lang_save(void) {
 
 const char *lang_str(StringID id) {
     if (id < 0 || id >= STR_COUNT) return "?";
+    if (g_lang < 0 || g_lang >= (int)(sizeof(s_strings[0]) / sizeof(s_strings[0][0])))
+        g_lang = LANG_EN;
     return s_strings[id][g_lang];
 }

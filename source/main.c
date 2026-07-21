@@ -22,6 +22,7 @@
 //  Au lancement : verif de mise a jour -> bandeau discret + Y pour installer.
 // ============================================================
 #include <stdio.h>
+#include <string.h>
 #include <switch.h>
 #include <netdb.h>
 
@@ -245,11 +246,16 @@ int main(int argc, char **argv) {
             nextendo_update_result res = nextendo_update_apply(upd.size);
             rOk = (res == NUP_OK);
             switch (res) {
-                case NUP_OK:
+                case NUP_OK: {
                     upd.available = false;   // faite : on retire le bandeau
                     snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_UPDATE_OK));
-                    snprintf(rMsg, sizeof(rMsg), lang_str(STR_STATUS_UPDATE_OK_DESC), upd.latest);
+                    // lang_str fournit un format avec %%d — controlee par le developpeur, safe
+                    char updFmt[64];
+                    strncpy(updFmt, lang_str(STR_STATUS_UPDATE_OK_DESC), sizeof(updFmt) - 1);
+                    updFmt[sizeof(updFmt) - 1] = '\0';
+                    snprintf(rMsg, sizeof(rMsg), updFmt, upd.latest);
                     break;
+                }
                 case NUP_SIZE_FAIL:
                     snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_UPDATE_SIZE_FAIL));
                     snprintf(rMsg, sizeof(rMsg), "%s", lang_str(STR_STATUS_UPDATE_SIZE_FAIL_DESC));

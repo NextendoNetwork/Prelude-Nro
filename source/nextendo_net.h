@@ -41,4 +41,14 @@ unsigned char *net_http_get(const char *ip, int port, const char *path, size_t *
 // -1 si echec reseau/connexion, -2 si l'ecriture fichier echoue. *out_status = code HTTP.
 long net_http_get_to_file(const char *ip, int port, const char *path, FILE *out, int *out_status);
 
+// HTTPS GET vers host:443/path. Necessite socketInitializeDefault() + sslInitialize() avant.
+// Retourne le body (malloc) + longueur + code HTTP. NULL si echec.
+unsigned char *net_https_get(const char *host, const char *path,
+                              size_t *out_len, int *out_status);
+
+// HTTPS GET streaming fichier. Necessite socketInitializeDefault() + sslInitialize().
+// Retourne le nombre d'octets ecrits, -1 si reseau, -2 si ecriture.
+long net_https_get_to_file(const char *host, const char *path,
+                            FILE *out, int *out_status);
+
 #endif // NEXTENDO_NET_H

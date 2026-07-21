@@ -295,9 +295,9 @@ static bool copyFile(const char *src, const char *dst) {
 
 // --- Copie recursive romfs -> SD (miroir de l'arbo). Ecrase (patches gates par build-id,
 //     idempotents) pour qu'une MAJ du .nro propage les derniers patches sur la SD. ---
-static void copyTreeRomfs(const char *srcDir, const char *dstDir) {
+static bool copyTreeRomfs(const char *srcDir, const char *dstDir) {
     DIR *d = opendir(srcDir);
-    if (!d) return;
+    if (!d) return false;
     struct dirent *e;
     while ((e = readdir(d)) != NULL) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
@@ -306,13 +306,14 @@ static void copyTreeRomfs(const char *srcDir, const char *dstDir) {
         snprintf(dp, sizeof(dp), "%s/%s", dstDir, e->d_name);
         struct stat st;
         if (stat(sp, &st) == 0 && S_ISDIR(st.st_mode)) {
-            ensureDir(dp);
-            copyTreeRomfs(sp, dp);
+            if (R_FAILED(ensureDir(dp))) return false;
+            if (!copyTreeRomfs(sp, dp)) return false;
         } else {
-            copyFile(sp, dp);
+            if (!copyFile(sp, dp)) return false;
         }
     }
     closedir(d);
+    return true;
 }
 
 // --- Miroir exact de copyTreeRomfs : parcourt l'arbre romfs et retire de la SD les chemins
@@ -321,9 +322,9 @@ static void copyTreeRomfs(const char *srcDir, const char *dstDir) {
 //     /atmosphere/contents, exefs_patches partage avec d'autres patches, etc.).
 //     On se cale sur le romfs plutot que sur une liste codee en dur : la purge reste ainsi
 //     automatiquement synchronisee avec ce qu'on installe, sans liste a maintenir. ---
-static void removeTreeRomfs(const char *srcDir, const char *dstDir) {
+static bool removeTreeRomfs(const char *srcDir, const char *dstDir) {
     DIR *d = opendir(srcDir);
-    if (!d) return;
+    if (!d) return false;
     struct dirent *e;
     while ((e = readdir(d)) != NULL) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
@@ -339,6 +340,7 @@ static void removeTreeRomfs(const char *srcDir, const char *dstDir) {
         }
     }
     closedir(d);
+    return true;
 }
 
 // --- Retire les traces qui laissent l'IP du VPS lisible sur la carte SD.
@@ -418,14 +420,17 @@ static int nextendo_purge_stale(void) {
     return removed;
 }
 
-static void nextendo_provision_all(void) {
+static bool nextendo_provision_all(void) {
     nextendo_purge_stale();              // d'abord retirer l'ancien...
-    copyTreeRomfs("romfs:/sd", "sdmc:"); // ...puis poser le courant
+    return copyTreeRomfs("romfs:/sd", "sdmc:"); // ...puis poser le courant
 }
 
 bool nextendo_apply_nextendo(void) {
     if (R_FAILED(ensureDir(NEXTENDO_HOSTS_DIR))) return false;
-    nextendo_provision_all();            // pose TOUT le stack cert-trust (1ere fois ou MAJ)
+    if (!nextendo_provision_all()) {
+        nextendo_trace("30 WARN: provision_all a echoue -> annulation");
+        return false;
+    }
     bool a = writeTextFile(NEXTENDO_HOSTS_SYSMMC, NEXTENDO_HOSTS);
     bool b = writeTextFile(NEXTENDO_HOSTS_EMUMMC, NEXTENDO_HOSTS);
     // add_defaults=0 : nos redirections couvrent deja *.nintendo.net en entier, y compris tout
@@ -463,7 +468,10 @@ bool nextendo_apply_nintendo(void) {
     // l'echelle du systeme et notre CA restait de confiance — n'importe qui sur le reseau
     // pouvait intercepter le trafic vers le VRAI Nintendo. Sans risque : nextendo_provision_all()
     // repose tout au retour en mode Nextendo.
-    removeTreeRomfs("romfs:/sd", "sdmc:");
+    if (!removeTreeRomfs("romfs:/sd", "sdmc:")) {
+        nextendo_trace("24b removeTreeRomfs a echoue");
+        return false;
+    }
     nextendo_trace("24 removeTreeRomfs ok");
 
     // TELEMETRIE. L'ancien code posait enable_dns_mitm=0, ce qui desactivait du meme coup le

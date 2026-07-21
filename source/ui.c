@@ -146,6 +146,7 @@ static bool loadFace(const char *path, FT_Face *face, u8 **buf) {
     FILE *f = fopen(path, "rb");
     if (!f) return false;
     fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
+    if (sz < 0) { fclose(f); return false; }
     *buf = (u8 *)malloc(sz);
     if (!*buf) { fclose(f); return false; }
     bool ok = (fread(*buf, 1, sz, f) == (size_t)sz);
@@ -463,7 +464,11 @@ void ui_draw_upd_confirm(int buildVer) {
            lang_str(STR_UPD_CONFIRM_TITLE));
 
     char ver[64];
-    snprintf(ver, sizeof(ver), lang_str(STR_UPD_CONFIRM_VERSION), buildVer);
+    // lang_str fournit un format avec %%d — controlee par le developpeur, safe
+    char updFmt[64];
+    strncpy(updFmt, lang_str(STR_UPD_CONFIRM_VERSION), sizeof(updFmt) - 1);
+    updFmt[sizeof(updFmt) - 1] = '\0';
+    snprintf(ver, sizeof(ver), updFmt, buildVer);
     drawCF(b, st, s_semi, cx, cyy + 130, 24, acc, ver);
 
     drawCF(b, st, s_reg, cx, cyy + 180, 22, packColor(C_SUBTLE),
