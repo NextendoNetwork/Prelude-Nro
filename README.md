@@ -1,4 +1,11 @@
-# Prelude
+# Prelude: Switch to the fork of Juanjo3222: https://github.com/Juanjo3222/Prelude-nro
+
+
+
+
+
+
+
 
 **Prelude** is the Nintendo Switch homebrew that switches your console between the
 [Nextendo Network](https://nextendo.network) and Nintendo's official servers.
