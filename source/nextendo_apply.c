@@ -122,7 +122,9 @@ char *nextendo_hosts_build(const char *ip) {
     // hotes EXPLICITES de chaque jeu au cas ou le wildcard ne matche pas dans
     // Atmosphere (le * mid-label peut etre ignore sur certains builds).
     snprintf(line, sizeof(line), "%s g2*.s.n.srv.nintendo.net\n", ip);         EMIT_H(line);
-    snprintf(line, sizeof(line), "%s g2b309e01-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // MK8
+    // MK8 -> production (164) : les joueurs y sont ; le VPS dev n'a pas de joueurs.
+    // Doit rester APRES le wildcard g2* : "derniere ligne qui matche gagne".
+    snprintf(line, sizeof(line), "%s g2b309e01-lp1.s.n.srv.nintendo.net\n", NEXTENDO_SERVER_IP_NNCSD2); EMIT_H(line); // MK8 -> 164
     snprintf(line, sizeof(line), "%s g23380901-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // SSBU
     snprintf(line, sizeof(line), "%s g2ee2e300-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // ACNH
     snprintf(line, sizeof(line), "%s g26cfaf00-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // Strikers

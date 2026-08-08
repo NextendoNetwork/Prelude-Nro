@@ -121,7 +121,10 @@
 // build 36 : v3.0.2. Remove *.op2.nintendo.net wildcard (caused 2219-4001 on ACNH). Add
 //            conntest.nintendowifi.net + ctest.cdn.nintendo.net redirects (fix browser
 //            "This feature is not available"). BCAT from bcat-seed.zip.
-#define NEXTENDO_BUILD 39
+// build 40 : v3.0.6. MK8 secure-server (g2b309e01-lp1) now routes to the production IP
+//            (164.132.111.120) instead of the current server, where Mario Kart has its
+//            players. Kept AFTER the g2* wildcard: "last matching line wins" in Atmosphere.
+#define NEXTENDO_BUILD 40
 
 typedef struct {
     bool available;   // une version > NEXTENDO_BUILD est dispo
