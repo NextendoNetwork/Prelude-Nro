@@ -1,4 +1,6 @@
 /build/
+/build2/
+/beta/
 *.elf
 *.nacp
 *.map

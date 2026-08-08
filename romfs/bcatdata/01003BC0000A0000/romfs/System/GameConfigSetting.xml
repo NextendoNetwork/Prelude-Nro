@@ -1,0 +1,763 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<setting
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+	<category name="Root">
+
+		<!-- LunchPackのシステムで見るものはこのカテゴリーに -->
+		<category name="LP">
+			<parameter
+				name="FirstScene"
+				nameJp="最初に入るシーン名"
+				valueType="string"
+				defaultValue=""/>
+			<parameter
+				name="IsAllPrintOff"
+				nameJp="sead、LP、アプリのプリントをオフ。SDKとかPiaとかは出てしまう"
+				valueType="bool"
+				defaultValue="false"/>
+			<parameter
+				name="IsDispDMark"
+				nameJp="デバッグ機能を使った時のDMarkを表示"
+				valueType="bool"
+				defaultValue="true"/>
+			<parameter
+				name="EnableDispWarningForShow"
+				nameJp="誰かにROMを見せるときのためにワーニングを消す"
+				valueType="bool"
+				defaultValue="false"/>
+			<parameter
+				name="IsLoadDevTmp"
+				nameJp="DevTmp.packをロードするか。一つのPCで複数台実行するときはオフの方がよさそう"
+				valueType="bool"
+				defaultValue="true"/>
+			<category name="Sound">
+				<parameter
+					name="BgmMute"
+					nameJp="BGMを鳴らさない"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="IsDispLevelMeter"
+					nameJp="音量メーターをデバッグ表示"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="EnableAalErrorBreak"
+					nameJp="aalのエラーが発生したらデバッガでbreakする"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="IsDispSoundInformation"
+					nameJp="aalとSLinkのInformationを画面に警告表示する"
+					valueType="bool"
+					defaultValue="false"/>
+			</category><!-- サウンドの終了タグ -->
+			<category name="Gfx">
+        <parameter
+					name="IsOffGsysDebugDraw"
+					nameJp="gsysのデバッグ描画を起動時に切るかどうか"
+					valueType="bool"
+					defaultValue="false"/>
+			</category><!-- グラフィックス終了タグ -->
+			<category name="Network">
+				<parameter
+					name="MatchmakeGroupID"
+					nameJp="マッチングID：同じID同士だけMatchingする"
+					valueType="u32"
+					defaultValue="0"
+					min="0"
+					max="99"/>
+				<parameter
+					name="NonStopEnlThreadIfAssert"
+					nameJp="ASSERTになってもenl通信スレッドを止めない"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="NexTraceLevel"
+					nameJp="NexのTRACEレベルを設定（０でOFF、１で通常、２で詳細）"
+					valueType="s32"
+					defaultValue="0"/>
+        <parameter
+					name="PiaTraceLevel"
+					nameJp="PiaのTRACEレベルを設定（０でOFF、１で通常、２で詳細）"
+					valueType="s32"
+					defaultValue="1"/>
+        <parameter
+					name="DrawTransportProfilerMode"
+					nameJp="Transport計測描画モード"
+					comment="Transport計測描画モード"
+					valueType="u32"
+					defaultValue="0"/>
+				<parameter
+					name="LatencyEmulatorPresetLevel"
+					nameJp="レイテンシーエミュレータの初期設定値"
+					valueType="u32"
+					defaultValue="0"
+					min="0"
+					max="6"/>
+				<parameter
+					name="ValidTransportAnalyze"
+					nameJp="Transport解析を有効にする"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="DisableHIOParamSynchronizer"
+					nameJp="HIO同期を無効化する"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="IsFieldTest"
+					nameJp="フィールドテスト用特殊設定"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="PiaClonePrint"
+					nameJp="PiaCloneのデバッグPrintを有効化"
+					valueType="bool"
+					defaultValue="true"/>
+			</category><!-- ネットワーク終了タグ -->
+			<category name="Programmer">
+				<parameter
+					name="IsUseCPUProfiler"
+					nameJp="CPUProfilerを使うか。Pilotでも使える"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="ValidSceneDbgCtrlPilot"
+					nameJp="PilotでもgetSceneDbgCtrlでコントローラーを取れるように"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="MemProfilerStart"
+					nameJp="MemProfiler起動時にスタート"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="InfLoopCheckerOFF"
+					nameJp="無限ループチェッカーOFF(PilotでSparkとか使いたい時)"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="CPUDbgProfilerStart"
+					nameJp="SysDbgProfilerを起動時に開始"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="AccountAutoSelectForHBMBootByVSI"
+					nameJp="HBMからのVSI起動のため、アカウントをランタイムで自動選択するかどうか"
+					valueType="bool"
+					defaultValue="false"/>
+			</category><!-- Programmerの終了タグ -->
+			<category name="UI">
+				<parameter
+					name="DefaultLayoutViewerIsPreview"
+					nameJp="レイアウトビューアの種類の起動時の設定をプレビューにする"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="DrawPaneFrameOnPaneHioTree"
+					nameJp="ORでコントロールのペインツリー作成時にペイン枠を表示する"
+					valueType="bool"
+					defaultValue="true"/>
+      </category><!-- UIの終了タグ -->
+		</category><!-- LP の終了タグ -->
+
+		<!-- Project毎のものはこのカテゴリーに -->
+		<category name="Project">
+			<parameter
+				name="SaveSceneInfoOnEnter"
+				nameJp="最後に入ったシーンとマップ、VSルールを覚える"
+				valueType="bool"
+				defaultValue="false"/>
+      <parameter
+        name="CorrectSeq"
+        nameJp="正規シーケンス？"
+        comment="0:ターゲット次第、1:必ずON、2:必ずOFF"
+        valueType="s32"
+        defaultValue="0"/>
+      <parameter
+				name="FirstMap"
+				nameJp="最初に入るマップ名"
+				valueType="string"
+				defaultValue=""/>
+			<parameter
+				name="IsForceReloadMap"
+				nameJp="ステージ入る時に必ずマップを読み直す。ロムを起動したままやpackを作り直さずにマップファイルをすげ変えて実行したい時に使う"
+				valueType="bool"
+				defaultValue="false"/>
+			<parameter
+				name="DisableStressAnalyzer"
+				nameJp="ストレスアナライザーOFF"
+				valueType="bool"
+				defaultValue="false"/>
+			<parameter
+				name="Atodekesu_KeitaiFullResolution"
+				nameJp="携帯機モードでフル解像度"
+				valueType="bool"
+				defaultValue="false"/>
+      <parameter
+					name="SaveDataChangeAsBoot"
+					nameJp="セーブデータ変更。デバコンでできるのと同じ。0:何もしない,1:フルオープン,2:初期化,3:contentのDebugUnderPilot"
+					valueType="s32"
+					defaultValue="0"
+					min="0"
+					max="3"/>
+			<parameter
+				name="ApplyViewerEnv"
+				nameJp="ビューア用環境適用"
+				valueType="bool"
+				defaultValue="false"/>
+      <parameter
+					name="AgingScriptAsBoot"
+					nameJp="Bootシーンで起動実行するエージングスクリプト（無名では起動しない）"
+					valueType="string"
+					defaultValue=""/>
+			<parameter
+				name="InvalidCD"
+				nameJp="InvalidCD"
+				valueType="bool"
+				defaultValue="false"/>
+      <category name="Schedule">
+        <parameter
+          name="BcatDownload"
+          nameJp="BCATダウンロード有効？"
+          comment="0:ターゲット次第、1:必ずON、2:必ずOFF"
+          valueType="s32"
+          defaultValue="2"/>
+        <parameter
+          name="DayChangeCheck"
+          nameJp="DayChangeCheck有効？"
+          comment="0:ターゲット次第、1:必ずON、2:必ずOFF 3,4,5:対戦後必ずDayChange"
+          valueType="s32"
+          defaultValue="0"/>
+        <parameter
+          name="EnableScheduleDbgDisplay"
+          nameJp="スケジュール常時デバッグ表示有効？"
+          valueType="bool"
+          defaultValue="false"/>
+        <parameter
+          name="ScheduleDbgDetailPrint"
+          nameJp="スケジュール詳細Print有効？"
+          valueType="bool"
+          defaultValue="false"/>
+        <parameter
+          name="ForceFestivalHeldInBoot"
+          nameJp="Bootシーンでフェスを強制開催モードにする"
+          valueType="bool"
+          defaultValue="false"/>
+        <parameter
+          name="IsUseDevContentGrfDeliFesTex"
+          nameJp="Deliグラフィティを使う"
+          valueType="bool"
+          defaultValue="false"/>
+        <parameter
+					name="FestState"
+					nameJp="フェス状態の上書き(-1:上書きしない(デフォルト), 0:通常, 1:告知期間, 2:開催中, 3:結果発表待ち"
+					valueType="s32"
+					defaultValue="-1"
+					min="-1"
+					max="3"/>
+		<parameter
+		  name="ForceNetworkTime"
+		  nameJp="起動時にネットワーク時刻をセット(例:2017-03-04T08:45:00+09:00)"
+		  comment="W3CDTFで記入してください"
+		  valueType="string"
+		  defaultValue="" />
+      </category>
+
+      <category name="Network">
+				<parameter
+					name="ChangeLanMatchInBoot"
+					nameJp="BootでLANマッチングに切り替え"
+					valueType="bool"
+					defaultValue="true"/>
+        <parameter
+          name="NexLogInLobby"
+          nameJp="ロビーでNEXログインする？"
+          valueType="bool"
+          defaultValue="true"/>
+        <parameter
+          name="OnlinePlayPenalty"
+          nameJp="オンラインプレイ禁止ペナルティ"
+          comment="0:ターゲット次第、1:必ずON、2:必ずOFF"
+          valueType="s32"
+          defaultValue="0"/>
+        <parameter
+          name="SkipFriendSeqInLobby"
+          nameJp="ロビーでフレンドシーケンスをスキップする？"
+          valueType="bool"
+          defaultValue="false"/>
+        <parameter
+          name="EntryDebugInfoFriend"
+          nameJp="フレンドに関するデバッグ情報を表示する"
+          valueType="bool"
+          defaultValue="false"/>
+        <parameter
+					name="DummyMatchAutoStart"
+					nameJp="DummyMatch自動開始"
+					valueType="bool"
+					defaultValue="true"/>
+        <parameter
+					name="DummyMatchAutoFixPlayerNum"
+					nameJp="DummyMatch自動確定人数（最大９まで）"
+					valueType="s32"
+					defaultValue="8"/>
+        <parameter
+					name="LocalMatchUseChannel"
+					nameJp="ローカル通信で使用するチャンネル"
+					comment="デフォルトは0 (2.4Ghz帯自動選択)、それ以外は36,40,44,48から選択(開発用5GHz帯)"
+					valueType="u32"
+					defaultValue="0"/>
+        <parameter
+          name="PiaChatCodec"
+          nameJp="PiaChatのコーデック"
+          comment="0:4bitADPCM、1:16kbps-Opus、2:32kbps-Opus"
+          valueType="s32"
+          defaultValue="0"/>
+				<parameter
+					name="BitRateMeasureRate"
+					nameJp="帯域計測率上書き"
+					valueType="f32"
+					defaultValue="-1"
+					min="-1"
+					max="1"/>
+      </category>
+
+      <category name="GameNet">
+				<parameter
+					name="UnreliableSendInterval"
+					nameJp="Unreliable送信間隔"
+					valueType="s32"
+					defaultValue="4"
+					min="0"
+					max="256"/>
+				<parameter
+					name="ProfileGameCloneEvent"
+					nameJp="GameCloneEventをプロファイル"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="DelayCheckFrame"
+					nameJp="イベントの遅延チェックを開始するフレーム(-1で無効)"
+					valueType="s32"
+					defaultValue="-1"/>
+				<parameter
+					name="MovelessPlayerDetectSec"
+					nameJp="放置プレイヤーの検出時間[sec](-1で無効)"
+					valueType="s32"
+					defaultValue="60"/>
+				<parameter
+					name="DbgGameTime"
+					nameJp="Gameの試合時間を強制で変える(秒単位)(0のときは通常通り)"
+					valueType="u32"
+					defaultValue="0"
+					min="0"
+					max="600"/>
+				<parameter
+					name="NetPackTestGambitMode"
+					nameJp="Gambit方式の通信データ圧縮を行う（通信中の切り替えＮＧ）"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="LooseFinishPaint"
+					nameJp="塗りイベント終了待ちを緩く"
+					valueType="bool"
+					defaultValue="false"/>
+			</category><!-- GameNetの終了タグ -->
+
+			<category name="Player">
+				<parameter
+					name="GamePlayerIsUnlimitedAutoShot"
+					nameJp="プレイヤー無制限に自動ショット射出（デバッグ用）"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="GamePlayerIsUnlimitedAutoSuperShot"
+					nameJp="プレイヤー常時にスーパー状態（上のと組み合わせるとスーパー乱射）"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="GamePlayerIsUnlimitedInkTank"
+					nameJp="インク消費無し、スペシャルゲージ常時マックス"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="FreeTestPlayerNum"
+					nameJp="FreeTestでのプレイヤー最大数(-1で最大)"
+					valueType="s32"
+					defaultValue="-1"/>
+				<parameter
+					name="DebugDefaultWeaponSetName"
+					nameJp="（デバッグ用）他プレイヤーがもつWeaponSet名"
+					valueType="string"
+					defaultValue=""/>
+				<parameter
+					name="GamePlayerCreateMantle"
+					nameJp="（デバッグ用）マントを作る"
+					valueType="bool"
+					defaultValue="false"/>
+      </category><!-- Playerの終了タグ -->
+
+      <category name="Bullet">
+        <parameter
+					name="BulletCreatePlayerScale"
+					nameJp="非通信時に生成する弾の量(デバッグマーチングを使用するときは3が好ましいです)"
+					valueType="s32"
+					defaultValue="1"
+					min="1"
+					max="3"/>
+      </category><!-- Bulletの終了タグ -->
+
+      <category name="Match">
+        <parameter
+					name="EntryDebugInfoMatch"
+					nameJp="Matchシーンでデバッグ情報を表示する"
+          comment="0:ターゲット次第、1:必ずON、2:必ずOFF"
+					valueType="s32"
+					defaultValue="0"/>
+        <parameter
+					name="ForceChoiceStageInMatch"
+					nameJp="選択ステージをスケジュール問わず決め打ち"
+					valueType="string"
+					defaultValue=""/>
+        <parameter
+					name="MatchmakeRatingZero"
+					nameJp="マッチメイクレーティング値を０固定とする"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="DbgDisplayMMR"
+					nameJp="MMRに関するデバッグ情報を表示"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="PrivateMatchPassSingle"
+					nameJp="プライベートマッチを１人でも通過する"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="HopeTeam"
+					nameJp="希望チーム"
+					comment="-1:デフォルト、0:Alpha、1:Bravo"
+					valueType="s32"
+					defaultValue="-1"
+					min="-1"
+					max="1"/>
+        <parameter
+					name="DbgMatchmakeFewMenmbers"
+					nameJp="少ないメンバーでマッチメイク確定する"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="DbgMatchmakeFewMenmbersSolo"
+					nameJp="ソロの場合の確定メンバー数"
+					valueType="u32"
+					defaultValue="8"
+					min="1"
+					max="8"/>
+        <parameter
+					name="DbgMatchmakeFewMenmbersTagNum"
+					nameJp="2人、4人チームの場合の確定メンバー数"
+					valueType="u32"
+					defaultValue="2"
+					min="1"
+					max="2"/>
+        <parameter
+					name="DbgMatchmakeFewMenmbersTagFixNum"
+					nameJp="2人、4人チームの場合の相手チームも合わせたメンバー数"
+					valueType="u32"
+					defaultValue="4"
+					min="1"
+					max="4"/>
+      </category><!-- Matchの終了タグ -->
+
+      <category name="VS">
+				<parameter
+					name="FirstVersusRule"
+					nameJp="ルール"
+					valueType="string"
+					defaultValue=""/>
+				<parameter
+					name="EnableMaxPlayerTest"
+					nameJp="ローカルでVersusに入った時プレイヤー8人出す"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="CalcGameFrameRTC"
+					nameJp="ローカルでもRTCを使ってタイマーを計算する"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="MinimizeDemoBeforeGame"
+					nameJp="試合前のデモを短縮する"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="DrawKillDeathNumInResult"
+					nameJp="リザルトでキルデスをデバッグ表示"
+					valueType="bool"
+					defaultValue="false"/>
+			</category><!-- VSの終了タグ -->
+
+      <category name="Plaza">
+        <parameter
+					name="CoconutDownloadPrint"
+					nameJp="Coconutに関するダウンロードログ出力を有効にする"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="NewsDemoMode"
+					nameJp="ニュース 広報用素材撮影モード"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="NewsDemoMode_BlueScreen"
+					nameJp="ニュース 広報用素材撮影モード モニタを青にする"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="NewsFestResult_Override"
+					nameJp="ニュースのフェス結果を上書きする"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="NewsFestResult_VoteRateAlpha"
+					nameJp="フェス結果 得票率(alpha)"
+					valueType="s32"
+					defaultValue="5000"
+					min="0"
+					max="10000"/>
+        <parameter
+					name="NewsFestResult_SoloAlpha"
+					nameJp="フェス結果 ソロ(alpha)"
+					valueType="s32"
+					defaultValue="5000"
+					min="0"
+					max="10000"/>
+        <parameter
+					name="NewsFestResult_TeamAlpha"
+					nameJp="フェス結果 チーム(alpha)"
+					valueType="s32"
+					defaultValue="5000"
+					min="0"
+					max="10000"/>
+      </category>
+      <!-- Plazaの終了タグ -->
+
+      <category name="GameObj">
+				<parameter
+					name="UpdateORNodeGameObjByActive"
+					nameJp="ORノードの見た目をアクティブ状態に応じて変える(シーン内での変更は各Mgrから)"
+					valueType="bool"
+					defaultValue="true"/>
+				<parameter
+					name="UpdateORNodeGameObjByActiveCoop"
+					nameJp="CoopモードでORノードの見た目をアクティブ状態に応じて変える(シーン内での変更は各Mgrから)"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="EnableJerryAnimCalcSkip"
+					nameJp="クラゲのアニメ更新スキップを有効にする"
+					valueType="bool"
+					defaultValue="true"/>
+				<parameter
+					name="EnableJerryViewFrustumCulling"
+					nameJp="クラゲのビューフラスタムカリングを有効にする"
+					valueType="bool"
+					defaultValue="true"/>
+			</category><!-- GameObjの終了タグ -->
+
+      <category name="Octa">
+				<parameter
+					name="UseDefaultEnvSetInMissionOcta"
+					nameJp="MissionOctaマップでデフォルト環境を使う(Develop以下限定)"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="CreateAllXLinkUserForLiftInMissionOcta"
+					nameJp="MissionOctaマップでリフトのXLinkユーザーを必ず生成する(Develop以下限定)"
+					valueType="bool"
+					defaultValue="false"/>
+			</category><!-- Octaの終了タグ -->
+
+			<category name="Photograph">
+				<parameter
+					name="PhotographMode"
+					nameJp="撮影モードのON/OFF"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="PhotographPlayerInfo"
+					nameJp="撮影用のプレイヤー情報名"
+					valueType="string"
+					defaultValue=""/>
+				<parameter
+					name="PhotographPlayerImortal"
+					nameJp="撮影用にプレイヤーを無敵にする"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="PhotographNoSpecial"
+					nameJp="撮影用にスペシャルが溜まらないようにする"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="FixTeamColor"
+					nameJp="固定チームカラー"
+					valueType="string"
+					defaultValue=""/>
+				<parameter
+					name="SwapTeamColor"
+					nameJp="チームカラーを入れ替える"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="StopFieldAnimation"
+					nameJp="メイン地形のアニメーションを止める(静止画用)"
+					valueType="bool"
+					defaultValue="false"/>
+			</category><!-- Photographの終了タグ -->
+
+			<category name="Sound">
+				<parameter
+					name="BgmMute"
+					nameJp="BGMを鳴らさない"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="ForceStereo"
+					nameJp="ステレオで出力"
+					valueType="bool"
+					defaultValue="false"/>
+				<parameter
+					name="SoundProcessCheck"
+					nameJp="出力測定モード(0:しない,1:自動,2:手動)"
+					valueType="s32"
+					defaultValue="2"
+					min="0"
+					max="2"/>
+				<parameter
+					name="MasterVolume"
+					nameJp="マスターボリューム(-1:SoundMgrの設定に従う)"
+					valueType="f32"
+					defaultValue="-1"
+					min="-1"
+					max="10"/>
+				<parameter
+					name="DeviceVolumeTv"
+					nameJp="TVボリューム(-1:SoundMgrの設定に従う)"
+					valueType="f32"
+					defaultValue="-1"
+					min="-1"
+					max="10"/>
+				<parameter
+					name="DeviceVolumeSpeaker"
+					nameJp="スピーカーボリューム(-1:SoundMgrの設定に従う)"
+					valueType="f32"
+					defaultValue="-1"
+					min="-1"
+					max="10"/>
+				<parameter
+					name="DeviceVolumeStereoJack"
+					nameJp="ステレオジャックボリューム(-1:SoundMgrの設定に従う)"
+					valueType="f32"
+					defaultValue="-1"
+					min="-1"
+					max="10"/>
+				<parameter
+					name="MomentaryLoudnessThreshold"
+					nameJp="モーメンタリラウドネス通知&amp;キャプチャ閾値(LKFS)"
+					valueType="f32"
+					defaultValue="-14"
+					min="-100"
+					max="0"/>
+				<parameter
+					name="SamplePeakThreshold"
+					nameJp="サンプルピーク通知&amp;キャプチャ閾値(dB)"
+					valueType="f32"
+					defaultValue="-3"
+					min="-100"
+					max="0"/>
+				<parameter
+					name="IntegratedLoudnessThreshold"
+					nameJp="平均ラウドネス通知閾値(LKFS)"
+					valueType="f32"
+					defaultValue="-22"
+					min="-100"
+					max="0"/>
+				<parameter
+					name="SceneLoadTimeProfile"
+					nameJp="シーンロード時間計測モード"
+					valueType="bool"
+					defaultValue="false" />
+			</category><!-- Soundの終了タグ -->
+
+      <category name="PlayerIconCapture">
+        <parameter
+					name="SnapshotLayerVisible"
+					nameJp="スナップショット撮影後もレイヤーを消さない"
+					valueType="bool"
+					defaultValue="false"/>
+      </category>
+      <!-- PlayerIconCaptureの終了タグ -->
+
+      <category name="UI">
+        <parameter
+					name="PrintCreatePartsCtrlLog"
+					nameJp="部品生成時にログを出す"
+					valueType="bool"
+					defaultValue="false"/>
+        <parameter
+					name="CreatePartsCtrlHandle"
+					nameJp="部品生成時にXLinkユーザー名描画用のハンドルを生成する"
+					valueType="bool"
+					defaultValue="false"/>
+      </category>
+      <!-- UIの終了タグ -->
+
+
+      <category name="Version">
+        <parameter
+          name="AppVersion"
+          nameJp="アプリケーションバージョン"
+          valueType="s32"
+          defaultValue="64"
+          min="0"
+          max="65"/>
+        <parameter
+					name="CustomPartAddition"
+					nameJp="ギアや武器などの追加度合い"
+					comment="0:最初のロム、1..."
+					valueType="s32"
+					defaultValue="19"
+					min="0"
+					max="99"/>
+        <parameter
+					name="CoopAddition"
+					nameJp="Coopの武器やマップの追加度合い"
+					comment="0:最初のロム、1..."
+					valueType="s32"
+					defaultValue="5"
+					min="0"
+					max="99"/>
+        <parameter
+          name="NeedOctaResVersion"
+          nameJp="必要なOctaリソースバージョン(OctaResVersion_Octa.xmlの数値)"
+          valueType="s32"
+          defaultValue="0"
+          min="0"
+          max="64"/>
+        <parameter
+					name="OExcl"
+					nameJp="OExcl"
+					valueType="bool"
+					defaultValue="false"/>
+      </category>
+      <!-- Versionの終了タグ -->
+
+    </category><!-- Project の終了タグ -->
+
+	</category><!-- Root の終了タグ -->
+</setting>

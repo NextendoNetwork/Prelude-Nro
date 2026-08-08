@@ -1,0 +1,179 @@
+﻿Architectural Analysis of the Nintendo Switch Account System, Server Endpoints, and Custom Infrastructure Configuration
+The Nintendo Switch operating system, Horizon OS, relies on a microkernel architecture where operating system services, hardware drivers, and network communications run as isolated usermode processes1. Within this microservice framework, the account management ecosystem—governed on-device by the nnAccount system module—serves as the core broker for user profile state, identity verification, and remote service authorization2. The functional footprint of this subsystem spans local state storage on NAND flash, multi-tier cloud authentication pipelines comprising Device Authentication, Application Authentication, Broadband Access Anchor System, and Nintendo Account identity servers, as well as strict cryptographic token validation chains3.
+Horizon OS Account Subsystem and Local State Architecture
+Horizon OS enforces strict security boundaries through per-process system call filtering, service whitelisting, and isolated storage domains1. Applications and non-privileged system components cannot directly access raw hardware partitions or cross security domains1. Consequently, identity management is divided into local account profiles maintained directly on the console and network identities managed by remote cloud infrastructures4.
+Local user accounts are persisted inside System Save Data container 8000000000000010 located within the console's NAND flash memory4. The primary state archive within this container is _user.json, which stores all configuration attributes defining a local user profile4. This file contains the internal 128-bit User ID, local profile nickname, date of birth, gender, language preferences, region code, and country setting4. It also records online binding parameters, including registered email addresses, screen names, and the boolean flag isNnLinked, which indicates whether the profile has been bound to an online Nintendo Account4. Additionally, _user.json tracks user consent flags for internal telemetry (analyticsForInternalAnalysisPermitted) and targeted marketing (analyticsForTargetMarketingPermitted), alongside parental control restrictions4.
+Because specific software titles mandate a linked online profile before enabling network functions or allowing access to certain single-player features, manipulating local profile state serves as a primary method for offline operation8. Utility applications such as Linkalho modify System Save Data 8000000000000010 directly by injecting mock identity bindings into _user.json and flipping isNnLinked to a positive state4. This tricks the local Horizon account service into reporting that the profile is fully registered, enabling title execution without forcing the console to establish handshakes with live Nintendo servers8.
+Multi-Tier Authentication Infrastructure and Token Lifecycle
+Authenticating a Nintendo Switch console against cloud services requires navigating a sequential, multi-stage server topology3. Rather than relying on a single authentication gateway, the platform uses a tiered trust hierarchy that escalates from hardware-bound device verification to title authorization, user session establishment, and backend service token issuance3.
+Device Authentication Protocol (DAuth)
+The entry point for all network interaction is the DAuth server hosted at dauth-lp1.ndas.srv.nintendo.net3. Access to DAuth requires mutual TLS (mTLS) authentication utilizing an RSA client certificate uniquely provisioned into each console's factory PRODINFO partition during manufacturing3.
+To acquire a device authentication token (device_auth_token), the console initiates a challenge-response workflow3:
+1. The client issues a request to DAuth and receives a challenge payload containing random bytes and key generation metadata3.
+2. The Horizon system software engages the hardware Tegra Security Engine (SE) to decrypt the internal aes_kek_generation_source using SoC master keys, deriving the primary DAuth key source via AES-ECB1.
+3. The derived key calculates an AES-CMAC signature over the request form parameters, which include client_id, challenge, key_generation, and system_version3.
+4. Upon validating the CMAC signature, DAuth issues a Base64-encoded device_auth_token configured with a standard expiration life of 86,400 seconds (24 hours)3.
+Application Authentication Protocol (AAuth)
+Following successful device authentication, the console communicates with the AAuth server at aauth-lp1.ndas.srv.nintendo.net to request an application_token required for title-specific online services5. The request payload combines the previously acquired device_auth_token, the target application title ID (application_id), the application version, and the media authentication type (GAMECARD, DIGITAL, or SYSTEM)5.
+For physical gamecards, AAuth issues a cryptographic challenge that requires reading and validating RSA signatures and header data dumped directly from the physical gamecard hardware5. Digital titles submit ticket authorization data to prove ownership5. Successful verification prompts AAuth to return an Application JSON Web Token (JWT) signed by Nintendo's private keys5.
+Broadband Access Anchor System Protocol (BAAS)
+The BAAS infrastructure handles user identity registration, device account login, and social graph interactions6. Operating primarily at baas.nintendo.com (and shifting system account operations to m-lp1.baas.nintendo.com on firmware versions 21.0.0 and later), BAAS executes three core procedures6:
+1. Anonymous Token Generation: The client sends a POST request to /1.0.0/application/token supplying the device_auth_token as an assertion under the public_client grant type6. BAAS yields an anonymous Bearer accessToken valid for 10,800 seconds (3 hours)6.
+2. Device Account Login: Operating under the anonymous token context, the console issues a request to /1.0.0/login containing local device account credentials and an optional appAuthNToken6. BAAS validates the credentials and returns a user-specific accessToken alongside an idToken required for backend game server authorization6.
+3. Identity Federation: When linking an online profile, the console calls /1.0.0/federation, passing an identity token derived from accounts.nintendo.com (idp: nintendoAccount) to bind the web identity to the local device account6.
+Identity and Token Security Architecture
+Tokens exchanged across the server ecosystem adhere strictly to the JSON Web Token (JWT) standard12. Every JWT contains a structured header defining the signing algorithm (alg), a Key ID (kid), and a JWK Set URL (jku) pointing to official key distribution endpoints such as dcert-lp1.ndas.srv.nintendo.net/keys12.
+Nintendo utilizes RS256 (RSA Signature with SHA-256) across most authentication endpoints, while newer infrastructure services like NPLN enforce ES256 (ECDSA using P-256 and SHA-256)12. Receiving services verify signatures by retrieving public keys from the designated jku endpoint12. To accommodate continuous 24-hour key rotation cycles without invalidating active user sessions, the JWK distribution set maintains active public keys alongside keys from preceding rotation windows12. When connecting to multiplayer environments built on legacy Quazal NEX engines or modern NPLN frameworks, the system supplies the BAAS-generated idToken within authentication RPC payloads (such as ValidateAndRequestTicketWithParam), eliminating password exposure on game servers11.
+System Endpoints, API Route Specifications, and Client Identifiers
+The following tables document the primary API domains, client identifiers, headers, and protocol parameters used across the Nintendo Switch account and authentication infrastructure3.
+
+
+Server Domain
+	Base URL
+	Authentication Mechanism
+	Primary Protocol Function
+	DAuth
+	dauth-lp1.ndas.srv.nintendo.net
+	mTLS (PRODINFO Cert) + AES-CMAC
+	Device authentication and device token issuance3
+	AAuth
+	aauth-lp1.ndas.srv.nintendo.net
+	Device Auth Token + Media Certification
+	Title authorization and application JWT generation5
+	BAAS Main
+	baas.nintendo.com
+	Bearer Access Token
+	Device account management, login, and social graph6
+	BAAS Sys (v21+)
+	m-lp1.baas.nintendo.com
+	mTLS + Bearer Access Token
+	System-level account state synchronization6
+	Nintendo Account
+	accounts.nintendo.com
+	OAuth 2.0 / Client Credentials
+	Global user management, identity login, web SSO7
+	Account API
+	api.accounts.nintendo.com
+	OAuth Access Token
+	User profile data retrieval (/2.0.0/users/me)7
+	
+
+Client Identifier
+	Application Target
+	Functional Scope
+	75fe236362ff5f8b
+	Nintendo Account Applet
+	System UI account authentication and linking dialogs3
+	81333c548b2e876d
+	Nintendo Account API
+	Client-to-account REST API communication3
+	8f849b5d34778d8e
+	AAuth and BAAS Infrastructure
+	Inter-service authentication token exchanges3
+	d5b6cac2c1514c56
+	Dragons and Vermillion
+	Content rights management and entitlement verification3
+	dc656ea03b63cf68
+	Parental Controls
+	Parental control synchronization and authentication3
+	df51c436bc01c437
+	Prepo Subsystem
+	Operational telemetry and execution logging3
+	
+
+API Route
+	HTTP Method
+	Required Headers
+	Key Parameters & Body Payload
+	/v8/device_auth_tokens
+	POST
+	Host, User-Agent, X-Nintendo-PowerState
+	client_id, challenge, key_generation, system_version, mac
+[cite: 3]
+	/1.0.0/application/token
+	POST
+	Content-Type, X-Nintendo-PowerState
+	grantType (public_client), assertion (device_auth_token), penneId
+[cite: 6, 7]
+	/1.0.0/login
+	POST
+	Authorization: Bearer <AppToken>
+	id, password, appAuthNToken, naCountry, isPersistent
+[cite: 6, 7]
+	/1.0.0/federation
+	POST
+	Authorization: Bearer <AppToken>
+	id, password, idp (nintendoAccount), idToken (from Account API)6
+	/connect/1.0.0/authorize
+	GET
+	Host: accounts.nintendo.com
+	client_id, redirect_uri, response_type, scope (nx), theme
+[cite: 7]
+	/connect/1.0.0/api/token
+	POST
+	Content-Type: application/x-www-form-urlencoded
+	grant_type, code, device_authentication_token, client_id
+[cite: 7]
+	Custom Infrastructure Engineering, Domain Interception, and Private Server Configuration
+Establishing custom backend servers—such as open-source game server implementations like nex-go or custom account backends—requires redirecting console network traffic away from production endpoints while successfully negotiating cryptographic trust boundaries15.
+Domain Hijacking and Redirection via Custom Firmware
+To route HTTP/HTTPS traffic away from Nintendo infrastructure toward private endpoints, custom firmware environments (such as Atmosphère) employ DNS Man-In-The-Middle (dns_mitm) system modules16. When any internal process calls address resolution functions like getaddrinfo, the dns_mitm module intercepts the query and checks local override files stored at /atmosphere/hosts/default.txt or /atmosphere/hosts/emummc.txt16.
+A production-ready redirection host file overrides official authentication servers, routing them to local loopback addresses to prevent tracking, while pointing account and BAAS backends to a designated private server IP address:
+127.0.0.1 dauth-lp1.ndas.srv.nintendo.net
+127.0.0.1 aauth-lp1.ndas.srv.nintendo.net
+192.168.1.50 e0d67c509fb203858ebcb2fe3f88c2aa.baas.nintendo.com
+192.168.1.50 accounts.nintendo.com
+TLS/SSL Interception and Trust Store Modification
+Because Horizon OS system modules enforce Transport Layer Security (TLS), domain redirection alone causes immediate connection failures due to certificate validation errors18. System processes interact with network endpoints through the nn::ssl module, which verifies server certificate chains against a hardcoded store of trusted root Certificate Authorities (CAs)18.
+Establishing functional communication with a private server requires overcoming two primary cryptographic barriers17:
+* Root CA Generation and Leaf Provisioning: Administrators must generate a custom Root Certificate Authority using tools such as OpenSSL or mitmproxy17. The private server presents a leaf certificate matching the requested domain (e.g., accounts.nintendo.com) that is signed by this custom CA17.
+* Horizon SSL Module Patching: Because the custom CA certificate is not recognized by the operating system, custom firmware patches must be applied to the ssl system module binary18. These patches hijack internal validation routines—specifically CERT_PKIXVerifyCert and CERT_VerifyCertName—forcing nn::ssl to bypass domain mismatches and accept custom public key infrastructures imported via nn::ssl::Context::ImportServerPki18.
+* Private Server Mutual TLS Handling: Endpoints that normally enforce client certificate validation (such as DAuth) require the private server backend to either accept and decode the unique client certificate exported from the console's PRODINFO partition, or disable mTLS checking while parsing standard form payloads3.
+Architectural Synthesis and Strategic Implications
+The account and identity architecture of the Nintendo Switch demonstrates a comprehensive defense-in-depth security model1. By partitioning identity into hardware-bound device authentication (DAuth), application authorization (AAuth), account session management (BAAS), and web identity SSO (Nintendo Account), Horizon OS ensures that compromised credentials at one layer do not implicitly compromise the entire security perimeter3.
+
+
+Architectural Layer
+	System Trust Anchor
+	Interception Vector
+	Mitigation Strategy
+	Local Profile (nnAccount)
+	System Save 8000000000000010
+	Offline state spoofing via Linkalho4
+	Per-console save data encryption1
+	Device Hardware (DAuth)
+	Tegra SE + PRODINFO RSA Cert
+	Client cert extraction / CMAC reversing3
+	Hardware-bound key derivation1
+	Transport Layer (TLS)
+	nn::ssl Hardcoded Root CAs
+	Host redirection and custom CA injection16
+	Enforced certificate pinning & mTLS3
+	Application Layer (AAuth)
+	Gamecard Certs / Digital Tickets
+	Header dumping via nxdumptool
+[cite: 5]
+	Dynamic challenge-response checks5
+	For developers and reverse engineers building private server backends, replicating this environment requires configuring domain redirection using dns_mitm, applying system patches to bypass Horizon's TLS verification routines, and implementing backend endpoints capable of responding to form-encoded requests, evaluating AES-CMAC payloads, and generating compliant JWTs3. Conversely, for offline console operation where cloud features are unnecessary, directly altering local user profile metadata within System Save Data 8000000000000010 provides the most reliable mechanism to satisfy title boot conditions without exposing the system to online networks4.
+Works cited
+1. Switch Security - GitHub Pages, https://switchbrew.github.io/34c3-slides/
+2. ndeadly/MissionControl: Use controllers from other consoles natively on your Nintendo Switch via Bluetooth. No dongles or other external hardware neccessary. - GitHub, https://github.com/ndeadly/MissionControl
+3. DAuth Server · kinnay/NintendoClients Wiki - GitHub, https://github.com/kinnay/NintendoClients/wiki/DAuth-Server
+4. Forensic Analysis of the Nintendo Switch - DiVA Portal, https://www.diva-portal.org/smash/get/diva2:1441718/FULLTEXT02
+5. AAuth Server · kinnay/NintendoClients Wiki - GitHub, https://github.com/kinnay/NintendoClients/wiki/AAuth-Server
+6. BAAS Server · kinnay/NintendoClients Wiki - GitHub, https://github.com/kinnay/NintendoClients/wiki/BAAS-Server
+7. Account Server (Switch) · kinnay/NintendoClients Wiki - GitHub, https://github.com/kinnay/NintendoClients/wiki/Account-Server-(Switch)
+8. Create Nintendo Offline accounts using Linkalho on the Nintendo Switch!!! - YouTube, https://www.youtube.com/watch?v=DJOVtByL9ns
+9. Forensic Autopsy of the Nintendo Switch - DFRWS, https://dfrws.org/wp-content/uploads/2021/03/FSIDI301110_proof.pdf
+10. Create online accounts on your modded Nintendo Switch with Linkalho - YouTube, https://www.youtube.com/watch?v=LOPtnaZlwJM
+11. Kerberos Authentication · kinnay/NintendoClients Wiki - GitHub, https://github.com/kinnay/NintendoClients/wiki/Kerberos-Authentication
+12. Switch Tokens · kinnay/NintendoClients Wiki - GitHub, https://github.com/kinnay/NintendoClients/wiki/Switch-Tokens
+13. Auth Service · kinnay/NintendoClients Wiki - GitHub, https://github.com/kinnay/NintendoClients/wiki/Auth-Service
+14. Nintendo | FusionAuth Docs, https://fusionauth.io/docs/apis/identity-providers/nintendo
+15. PretendoNetwork/nex-go: Barebones PRUDP/NEX server library written in Go - GitHub, https://github.com/PretendoNetwork/nex-go
+16. DNS Mitm with emummc id not work · Issue #1628 - GitHub, https://github.com/Atmosphere-NX/Atmosphere/issues/1628
+17. Certificates - mitmproxy docs, https://docs.mitmproxy.org/stable/concepts/certificates/
+18. Bypassing TLS Verification on Nintendo Switch - Reversing.Live, https://reversing.live/sslbypass.html
+19. NX-DNS-Manager - GitHub, https://github.com/JP3402/NX-DNS-Manager
+20. Bypass internet access check when connecting to a WiFi (or eth) network (if possible) #841, https://github.com/Atmosphere-NX/Atmosphere/issues/841
+21. How to Create Your Own SSL Certificate Authority for Local HTTPS Development, https://deliciousbrains.com/ssl-certificate-authority-for-local-https-development/

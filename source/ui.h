@@ -44,4 +44,18 @@ void ui_draw_progress(const char *line);
 // Ecran de resultat (succes vert / erreur rouge). A/B = retour.
 void ui_draw_result(const char *title, const char *msg, bool ok);
 
+// Menu de sélection de langue (R depuis le picker). sel = ligne survolée (0-2).
+void ui_draw_lang_menu(int sel);
+
+// Toast semi-transparent en bas de l'écran (texte centré).
+void ui_draw_toast(const char *text);
+
+// Ecran de chargement (titre "Prelude" + texte centree).
+void ui_draw_loading(const char *text);
+
+Framebuffer *ui_get_fb(void);
+
+// Ecran de confirmation avant mise a jour (A = installer, B = annuler).
+void ui_draw_upd_confirm(int buildVer);
+
 #endif // UI_H

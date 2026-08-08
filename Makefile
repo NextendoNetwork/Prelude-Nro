@@ -13,7 +13,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 
 #---------------------------------------------------------------------------------
 TARGET   := nextendo
-BUILD    := build
+BUILD    := build2
 SOURCES  := source
 DATA     := data
 INCLUDES := include
@@ -21,18 +21,18 @@ ROMFS    := romfs
 
 APP_TITLE   := Prelude
 APP_AUTHOR  := Nextendo Network
-# Règle de version : 1.0.N où N = NEXTENDO_BUILD (source/nextendo_update.h).
+# Règle de version : X.Y.N où N = NEXTENDO_BUILD (source/nextendo_update.h).
 # La version AFFICHÉE dans hbmenu (NACP), le build interne (auto-MAJ) et le tag GitHub
-# doivent TOUJOURS être alignés. Build 12 -> 1.0.12 -> release v1.0.12.
-APP_VERSION := 1.0.12
+# doivent TOUJOURS être alignés. Build 20 -> 2.0.1 -> release v2.0.1.
+APP_VERSION := 3.0.5
 APP_ICON    := icon.jpg
 
 #---------------------------------------------------------------------------------
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 
-CFLAGS := -g -Wall -O2 -ffunction-sections $(ARCH) $(DEFINES)
+CFLAGS := -g -Wall -Wextra -O2 -ffunction-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 $(ARCH) $(DEFINES)
 CFLAGS += $(INCLUDE) -D__SWITCH__
-CFLAGS += -I$(PORTLIBS)/include/freetype2 -I$(PORTLIBS)/include/SDL2
+CFLAGS += -I$(PORTLIBS)/include/freetype2 -I$(PORTLIBS)/include/SDL2 -Wno-format-truncation
 
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions
 
@@ -47,7 +47,7 @@ LDFLAGS  = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $
 # Link via pkg-config (.pc des portlibs) : liste EXACTE des codecs de SDL2_mixer
 # + deps FreeType, dans le bon ordre. Evite de deviner les noms de libs.
 PKGCONF := PKG_CONFIG_PATH=$(PORTLIBS)/lib/pkgconfig pkg-config
-LIBS := $(shell $(PKGCONF) --static --libs SDL2_mixer freetype2 2>/dev/null) -lnx
+LIBS := $(shell $(PKGCONF) --static --libs SDL2_mixer freetype2 2>/dev/null) -lnx -lturbojpeg
 
 #---------------------------------------------------------------------------------
 LIBDIRS := $(PORTLIBS) $(LIBNX)

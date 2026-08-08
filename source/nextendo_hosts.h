@@ -15,7 +15,9 @@
 
 // ============================================================
 //  Nextendo Network — contenu du fichier hosts Atmosphere DNS-MITM
-//  Mode NEXTENDO : redirige TOUT Nintendo -> nos serveurs, bloque le reste.
+//  Mode NEXTENDO : redirige la plupart des domaines Nintendo -> nos serveurs,
+//  bloque la telemetrie. Exceptions : d4c (MAJ systeme), ctest (browser conntest)
+//  et *.nintendowifi.net resolvent vers le vrai Nintendo pour eviter popups.
 //  Ecrit par l'app dans /atmosphere/hosts/sysmmc.txt ET /atmosphere/hosts/emummc.txt.
 //
 //  Regle Atmosphere : la DERNIERE ligne qui matche gagne.
@@ -25,7 +27,7 @@
 // ============================================================
 //  nncs2 NOTE : Pia exige DEUX IP DISTINCTES pour nncs1/nncs2, sinon il dedup et n'envoie
 //  jamais la 2e sonde -> le NAT ne se termine pas -> MK8/S2 tombent en 2618-201. L'ancienne
-//  box distincte est morte (ne repond plus) ; le serveur la remplace et fait tourner le meme
+//  box distincte est morte (ne repond plus) ; le VPS OVH la remplace et fait tourner le meme
 //  responder nncs2 (UDP 10025 + 10125) avec NNCS_SERVER_IP regle sur sa propre IP. Doit
 //  rester aligne avec DnsMitmResolver.cs cote emulateur, qui redirige nncs2 vers la meme IP.
 //
@@ -34,31 +36,11 @@
 #ifndef NEXTENDO_HOSTS_H
 #define NEXTENDO_HOSTS_H
 
-// CONFIGURATION : 203.0.113.10 / 203.0.113.11 sont des adresses d'EXEMPLE (RFC 5737).
-// Avant de compiler, remplace-les par l'IP de TON serveur Nextendo et de ton second
-// repondeur NAT. Idem BCAT_IP / UP_IP dans nextendo_bcat.c / nextendo_update.c.
-static const char NEXTENDO_HOSTS[] =
-    "# ============================================================\n"
-    "#  NEXTENDO NETWORK - Atmosphere DNS-MITM (mode NEXTENDO)\n"
-    "#  Genere par l'app homebrew Nextendo. Derniere ligne qui matche gagne.\n"
-    "# ============================================================\n"
-    "\n"
-    "# --- 1) Tout Nintendo -> serveurs Nextendo (VPS) ---\n"
-    "203.0.113.10    *.nintendo.net\n"
-    "203.0.113.10    *.nintendo.com\n"
-    "203.0.113.10    *.nintendowifi.net\n"
-    "203.0.113.10    *.nintendo.co.jp\n"
-    "\n"
-    "# --- 2) NAT-check #2 : IP differente de nncs1 (sinon MK8 test-103) ---\n"
-    "203.0.113.11  nncs2-*.n.n.srv.nintendo.net\n"
-    "\n"
-    "# --- 3) ANTI-BAN : telemetrie / rapport d'erreur -> trou noir (en dernier) ---\n"
-    "0.0.0.0          receive-%.dg.srv.nintendo.net\n"
-    "0.0.0.0          receive-%.er.srv.nintendo.net\n"
-    "# d4c (MAJ systeme) -> NOTRE VPS : le handler nx-account repond \"aucune MAJ\"\n"
-    "# (version 1073742904 <= console) -> plus de popup. (IP reelle Nintendo repondait\n"
-    "# \"MAJ dispo\" -> popup recurrent ; null-route 0.0.0.0 -> erreur de connexion MAJ.)\n"
-    "203.0.113.10    *.d4c.nintendo.net\n";
+#include "nextendo_config.h"
+
+// Génère le contenu du fichier hosts dns.mitm avec l'IP donnée.
+// Le buffer retourné est alloué dynamiquement — l'appelant doit le free().
+char *nextendo_hosts_build(const char *ip);
 
 // Chemins cibles sur la carte SD.
 #define NEXTENDO_HOSTS_SYSMMC "sdmc:/atmosphere/hosts/sysmmc.txt"

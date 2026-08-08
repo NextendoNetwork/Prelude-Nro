@@ -37,10 +37,18 @@ BootType nextendo_detect_boot(void);
 int nextendo_current_mode(void);
 
 // Mode NEXTENDO : ecrit les hosts (sysmmc.txt + emummc.txt) + enable_dns_mitm=1.
+// ip : IP du serveur à utiliser (NEXTENDO_SERVER_IP_DEFAULT ou NEXTENDO_SERVER_IP_ALT).
+bool nextendo_apply_nextendo_ip(const char *ip);
+
+// Mode NEXTENDO avec l'IP par défaut.
 bool nextendo_apply_nextendo(void);
 
 // Mode NINTENDO : renomme les hosts Nextendo en .bak + enable_dns_mitm=0 -> tout redevient normal.
 bool nextendo_apply_nintendo(void);
+
+// Teste la connectivite reseau de base et loggue les resultats dans la trace
+// (diagnostic pour 2123-0011 et 2810-1224). Necessite socketInitializeDefault().
+void nextendo_diag_network(void);
 
 // Redemarre la console (ne revient pas si succes ; bpcRebootSystem).
 Result nextendo_reboot(void);

@@ -15,7 +15,7 @@
 
 // ============================================================
 //  Nextendo .nro — musique de fond (BGM en boucle).
-//  Charge romfs:/bgm.ogg et la joue en boucle infinie. Non-fatal :
+//  Charge romfs:/bgm.mp3 et la joue en boucle infinie. Non-fatal :
 //  si le fichier est absent ou l'audio indispo, l'app continue en silence.
 // ============================================================
 #ifndef AUDIO_H
@@ -24,5 +24,7 @@
 
 bool audio_init(void);   // demarre la BGM en boucle (true si lancee)
 void audio_exit(void);   // arrete + libere
+void audio_egg_play(void);  // joue l'audio de l'easter egg (pause BGM)
+void audio_egg_stop(void);  // arrete l'audio egg, reprend BGM
 
 #endif // AUDIO_H
