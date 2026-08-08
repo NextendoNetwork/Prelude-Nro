@@ -17,10 +17,11 @@
 //  Nextendo .nro — Splatoon 2 schedule installer via LayeredFS.
 //
 //  Copies pre-embedded payload files from the NRO's own romfs
-//  (coopdata, vsdata, fesdata, System/GameConfigSetting.xml)
+//  (coopdata, vsdata, fesdata)
 //  directly into Atmosphere's LayeredFS override path:
 //    sdmc:/atmosphere/contents/<title_id>/romfs/
-//  Works for both USA (01003BC0000A0000) and EUR (0100F8F0000A2000).
+//  Covers JPN (01003C700009C000), USA (01003BC0000A0000) and
+//  EUR (0100F8F0000A2000).
 //
 //  No network download, no NXBC bundle parsing. The files are shipped
 //  inside the .nro and updated with each new release.
@@ -173,10 +174,10 @@ nextendo_bcat_result nextendo_bcat_install_s2(void) {
     g_log = fopen(LOG_PATH, "w");
     logf_("=== Nextendo BCAT install S2 (v5 — romfs embarquee) ===");
 
-    const char *regionIds[] = { "01003BC0000A0000", "0100F8F0000A2000" };
+    const char *regionIds[] = { "01003BC0000A0000", "0100F8F0000A2000", "01003C700009C000" };
     bool anyOk = false;
 
-    for (int r = 0; r < 2; r++) {
+    for (int r = 0; r < 3; r++) {
         char srcBase[FS_MAX_PATH], dstBase[FS_MAX_PATH];
         snprintf(srcBase, sizeof(srcBase), "%s/%s/romfs", ROMFS_BCAT_BASE, regionIds[r]);
         snprintf(dstBase, sizeof(dstBase), LAYEREDFS_BASE,  regionIds[r]);
