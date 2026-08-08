@@ -121,7 +121,8 @@
 // build 36 : v3.0.2. Remove *.op2.nintendo.net wildcard (caused 2219-4001 on ACNH). Add
 //            conntest.nintendowifi.net + ctest.cdn.nintendo.net redirects (fix browser
 //            "This feature is not available"). BCAT from bcat-seed.zip.
-#define NEXTENDO_BUILD 39
+// build 40 : v3.0.6. BCAT now ships JPN+USA+EUR regions (3-title LayeredFS).
+#define NEXTENDO_BUILD 40
 
 typedef struct {
     bool available;   // une version > NEXTENDO_BUILD est dispo
