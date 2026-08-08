@@ -29,10 +29,23 @@
 #include <dirent.h>
 #include <errno.h>
 #include <unistd.h>   // rmdir (purge des fichiers laisses par un ancien build)
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <switch.h>
 
 #include "nextendo_apply.h"
+#include "nextendo_config.h"
 #include "nextendo_hosts.h"
+#include "nextendo_net.h"
+
+char g_server_ip[NEXTENDO_SERVER_IP_MAX] = NEXTENDO_SERVER_IP_DEFAULT;
+
+const char *server_display_name(void) {
+    if (strcmp(g_server_ip, NEXTENDO_SERVER_IP_DEFAULT) == 0) return "VPS (51.178.29.194)";
+    if (strcmp(g_server_ip, NEXTENDO_SERVER_IP_ALT) == 0)     return "Local (3.135.232.168)";
+    return g_server_ip;
+}
 
 #define SETTINGS_DIR "sdmc:/atmosphere/config"
 #define NEXTENDO_EXOSPHERE_INI "sdmc:/exosphere.ini"
@@ -68,6 +81,75 @@ static Result ensureDir(const char *path) {
     return 0;
 }
 
+char *nextendo_hosts_build(const char *ip) {
+    const char *nncs2_ip = NEXTENDO_SERVER_IP_NNCSD2;
+    size_t cap = 4096;
+    char *buf = (char *)malloc(cap);
+    if (!buf) return NULL;
+    size_t olen = 0;
+    #define EMIT_H(s) do { size_t sl = strlen(s); \
+        if (olen + sl + 1 > cap) { cap = (olen + sl + 1) * 2; \
+            char *nb = (char *)realloc(buf, cap); if (!nb) { free(buf); return NULL; } buf = nb; } \
+        memcpy(buf + olen, (s), sl + 1); olen += sl; } while (0)
+
+    EMIT_H("# ============================================================\n");
+    EMIT_H("#  NEXTENDO NETWORK - Atmosphere DNS-MITM (mode NEXTENDO)\n");
+    EMIT_H("#  Genere par l'app homebrew Nextendo. Derniere ligne qui matche gagne.\n");
+    EMIT_H("# ============================================================\n\n");
+
+    EMIT_H("# --- 1) Tout Nintendo -> serveurs Nextendo ---\n");
+    char line[256];
+
+    snprintf(line, sizeof(line), "%s    *.nintendo.com\n", ip);           EMIT_H(line);
+    snprintf(line, sizeof(line), "%s    *.nintendo.co.jp\n", ip);         EMIT_H(line);
+    snprintf(line, sizeof(line), "%s accounts.nintendo.com\n", ip);       EMIT_H(line);
+    snprintf(line, sizeof(line), "%s api.accounts.nintendo.com\n", ip);   EMIT_H(line);
+    snprintf(line, sizeof(line), "%s m-lp1.baas.nintendo.com\n", ip);    EMIT_H(line);
+    snprintf(line, sizeof(line), "%s e0d67c509fb203858ebcb2fe3f88c2aa.baas.nintendo.com\n", ip); EMIT_H(line);
+    snprintf(line, sizeof(line), "%s cdn-image-e0d67c509fb203858ebcb2fe3f88c2aa.baas.nintendo.com\n", ip); EMIT_H(line);
+    snprintf(line, sizeof(line), "%s capi.lp1.op2.nintendo.net\n", ip);  EMIT_H(line);
+    snprintf(line, sizeof(line), "%s storage.hac.lp1.scsi.srv.nintendo.net\n", ip); EMIT_H(line);
+    snprintf(line, sizeof(line), "%s val.hac.penne.srv.nintendo.net\n", ip);  EMIT_H(line);
+    snprintf(line, sizeof(line), "%s god.hac.lp1.penne.srv.nintendo.net\n", ip); EMIT_H(line);
+    snprintf(line, sizeof(line), "%s dauth-lp1.ndas.srv.nintendo.net\n", ip);    EMIT_H(line);
+    snprintf(line, sizeof(line), "%s aauth.hac.lp1.ndas.srv.nintendo.net\n", ip); EMIT_H(line);
+    // *.srv.nintendo.net et *srv.nintendo.net (sans point) etaient dans v2.0.9/v2.1.0
+    // et couvraient TOUS les jeux. Le deuxieme pattern (*srv) matche les hotes multi-label
+    // comme g2b309e01-lp1.s.n.srv.nintendo.net que le premier (*.srv) ne couvre pas.
+    snprintf(line, sizeof(line), "%s    *.srv.nintendo.net\n", ip);       EMIT_H(line);
+    snprintf(line, sizeof(line), "%s    *srv.nintendo.net\n", ip);        EMIT_H(line);
+    // Wildcard g2* couvre TOUS les secure-servers NEX. En plus, on ajoute les
+    // hotes EXPLICITES de chaque jeu au cas ou le wildcard ne matche pas dans
+    // Atmosphere (le * mid-label peut etre ignore sur certains builds).
+    snprintf(line, sizeof(line), "%s g2*.s.n.srv.nintendo.net\n", ip);         EMIT_H(line);
+    snprintf(line, sizeof(line), "%s g2b309e01-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // MK8
+    snprintf(line, sizeof(line), "%s g23380901-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // SSBU
+    snprintf(line, sizeof(line), "%s g2ee2e300-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // ACNH
+    snprintf(line, sizeof(line), "%s g26cfaf00-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // Strikers
+    // *.op2.nintendo.net RETIRÉ (v3.0.2): trop large — attrapait des sous-domaines
+    // op2 non gérés par le VPS (authorization server, entitlement check) → 404 → erreurs
+    // 2219-4001 (ACNH). On garde capi.lp1.op2.nintendo.net (ligne au-dessus) qui suffit.
+
+    EMIT_H("\n# --- 2) NAT-check #2 : IP differente de nncs1 (sinon MK8 test-103) ---\n");
+    snprintf(line, sizeof(line), "%s  nncs2-*.n.n.srv.nintendo.net\n", nncs2_ip); EMIT_H(line);
+
+    EMIT_H("\n# --- 3) ANTI-BAN : telemetrie -> trou noir ---\n");
+    EMIT_H("0.0.0.0          receive-%.dg.srv.nintendo.net\n");
+    EMIT_H("0.0.0.0          receive-%.er.srv.nintendo.net\n");
+
+    EMIT_H("\n# --- 4) d4c (MAJ systeme) -> NON REDIRIGE ---\n");
+    EMIT_H("# NE PAS null-router : nim stocke un flag persistant.\n\n");
+
+    EMIT_H("\n# --- 5) conntest (browser connectivity check) -> serveur conntest Nextendo ---\n");
+    EMIT_H("# Le vrai Nintendo bloque parfois le conntest → \"This feature is not available\".\n");
+    EMIT_H("# On le redirige vers notre serveur qui repond X-Organization: Nintendo + 200 OK.\n");
+    snprintf(line, sizeof(line), "%s conntest.nintendowifi.net\n", ip); EMIT_H(line);
+    snprintf(line, sizeof(line), "%s ctest.cdn.nintendo.net\n", ip);    EMIT_H(line);
+
+    #undef EMIT_H
+    return buf;
+}
+
 static bool writeTextFile(const char *path, const char *contents) {
     FILE *f = fopen(path, "w");
     if (!f) return false;
@@ -95,8 +177,14 @@ static bool iniSetDnsMitm(bool enable, bool addDefaults) {
         fseek(f, 0, SEEK_END); sz = ftell(f); fseek(f, 0, SEEK_SET);
         buf = (char *)malloc(sz + 1);
         if (!buf) { fclose(f); return false; }
-        if (sz > 0) { if (fread(buf, 1, sz, f) != (size_t)sz) { /* tolere */ } }
-        buf[sz] = '\0';
+        if (sz > 0) {
+            size_t nr = fread(buf, 1, sz, f);
+            if (nr != (size_t)sz) {
+                // Lecture partielle -> fichier corrompu, on le traite comme inexistant.
+                free(buf); buf = NULL; sz = 0;
+            }
+        }
+        if (buf) buf[sz] = '\0';
         fclose(f);
     }
 
@@ -176,8 +264,14 @@ static bool iniSetBlankProdinfoEmummc(bool blank) {
         fseek(f, 0, SEEK_END); sz = ftell(f); fseek(f, 0, SEEK_SET);
         buf = (char *)malloc(sz + 1);
         if (!buf) { fclose(f); return false; }
-        if (sz > 0) { if (fread(buf, 1, sz, f) != (size_t)sz) { /* tolere */ } }
-        buf[sz] = '\0';
+        if (sz > 0) {
+            size_t nr = fread(buf, 1, sz, f);
+            if (nr != (size_t)sz) {
+                // Lecture partielle -> fichier corrompu, on le traite comme inexistant.
+                free(buf); buf = NULL; sz = 0;
+            }
+        }
+        if (buf) buf[sz] = '\0';
         fclose(f);
     }
 
@@ -233,7 +327,7 @@ static bool iniSetBlankProdinfoEmummc(bool blank) {
 }
 
 // --- Detection du MODE ACTUELLEMENT CHARGE (pour l'UI) ---
-// NEXTENDO si un fichier hosts redirige encore vers notre VPS (203.0.113.10) ;
+// NEXTENDO si un fichier hosts redirige encore vers notre VPS (51.178.29.194) ;
 // sinon NINTENDO (apply_nintendo les renomme en .bak -> plus de redirection).
 static bool fileHas(const char *path, const char *needle) {
     FILE *f = fopen(path, "rb");
@@ -246,8 +340,10 @@ static bool fileHas(const char *path, const char *needle) {
 }
 
 int nextendo_current_mode(void) {
-    if (fileHas(NEXTENDO_HOSTS_SYSMMC, "203.0.113.10") ||
-        fileHas(NEXTENDO_HOSTS_EMUMMC, "203.0.113.10"))
+    if (fileHas(NEXTENDO_HOSTS_SYSMMC, NEXTENDO_SERVER_IP_DEFAULT) ||
+        fileHas(NEXTENDO_HOSTS_EMUMMC, NEXTENDO_SERVER_IP_DEFAULT) ||
+        fileHas(NEXTENDO_HOSTS_SYSMMC, NEXTENDO_SERVER_IP_ALT) ||
+        fileHas(NEXTENDO_HOSTS_EMUMMC, NEXTENDO_SERVER_IP_ALT))
         return 0;   // CHOICE_NEXTENDO
     return 1;       // CHOICE_NINTENDO
 }
@@ -279,9 +375,9 @@ static bool copyFile(const char *src, const char *dst) {
 
 // --- Copie recursive romfs -> SD (miroir de l'arbo). Ecrase (patches gates par build-id,
 //     idempotents) pour qu'une MAJ du .nro propage les derniers patches sur la SD. ---
-static void copyTreeRomfs(const char *srcDir, const char *dstDir) {
+static bool copyTreeRomfs(const char *srcDir, const char *dstDir) {
     DIR *d = opendir(srcDir);
-    if (!d) return;
+    if (!d) return false;
     struct dirent *e;
     while ((e = readdir(d)) != NULL) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
@@ -290,13 +386,14 @@ static void copyTreeRomfs(const char *srcDir, const char *dstDir) {
         snprintf(dp, sizeof(dp), "%s/%s", dstDir, e->d_name);
         struct stat st;
         if (stat(sp, &st) == 0 && S_ISDIR(st.st_mode)) {
-            ensureDir(dp);
-            copyTreeRomfs(sp, dp);
+            if (R_FAILED(ensureDir(dp))) return false;
+            if (!copyTreeRomfs(sp, dp)) return false;
         } else {
-            copyFile(sp, dp);
+            if (!copyFile(sp, dp)) return false;
         }
     }
     closedir(d);
+    return true;
 }
 
 // --- Miroir exact de copyTreeRomfs : parcourt l'arbre romfs et retire de la SD les chemins
@@ -305,9 +402,9 @@ static void copyTreeRomfs(const char *srcDir, const char *dstDir) {
 //     /atmosphere/contents, exefs_patches partage avec d'autres patches, etc.).
 //     On se cale sur le romfs plutot que sur une liste codee en dur : la purge reste ainsi
 //     automatiquement synchronisee avec ce qu'on installe, sans liste a maintenir. ---
-static void removeTreeRomfs(const char *srcDir, const char *dstDir) {
+static bool removeTreeRomfs(const char *srcDir, const char *dstDir) {
     DIR *d = opendir(srcDir);
-    if (!d) return;
+    if (!d) return false;
     struct dirent *e;
     while ((e = readdir(d)) != NULL) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
@@ -323,6 +420,7 @@ static void removeTreeRomfs(const char *srcDir, const char *dstDir) {
         }
     }
     closedir(d);
+    return true;
 }
 
 // --- Retire les traces qui laissent l'IP du VPS lisible sur la carte SD.
@@ -402,24 +500,32 @@ static int nextendo_purge_stale(void) {
     return removed;
 }
 
-static void nextendo_provision_all(void) {
+static bool nextendo_provision_all(void) {
     nextendo_purge_stale();              // d'abord retirer l'ancien...
-    copyTreeRomfs("romfs:/sd", "sdmc:"); // ...puis poser le courant
+    return copyTreeRomfs("romfs:/sd", "sdmc:"); // ...puis poser le courant
+}
+
+bool nextendo_apply_nextendo_ip(const char *ip) {
+    if (R_FAILED(ensureDir(NEXTENDO_HOSTS_DIR))) return false;
+    if (!nextendo_provision_all()) {
+        nextendo_trace("30 WARN: provision_all a echoue -> annulation");
+        return false;
+    }
+    char *hosts = nextendo_hosts_build(ip);
+    if (!hosts) return false;
+    bool a = writeTextFile(NEXTENDO_HOSTS_SYSMMC, hosts);
+    bool b = writeTextFile(NEXTENDO_HOSTS_EMUMMC, hosts);
+    free(hosts);
+    bool i = iniSetDnsMitm(true, false);
+    bool p = iniSetBlankProdinfoEmummc(false);
+    if (!p) nextendo_trace("29 WARN: iniSetBlankProdinfoEmummc(false) a echoue -> risque 2123-0011");
+    nextendo_purge_leaks();
+    fsdevCommitDevice("sdmc");
+    return a && b && i && p;
 }
 
 bool nextendo_apply_nextendo(void) {
-    if (R_FAILED(ensureDir(NEXTENDO_HOSTS_DIR))) return false;
-    nextendo_provision_all();            // pose TOUT le stack cert-trust (1ere fois ou MAJ)
-    bool a = writeTextFile(NEXTENDO_HOSTS_SYSMMC, NEXTENDO_HOSTS);
-    bool b = writeTextFile(NEXTENDO_HOSTS_EMUMMC, NEXTENDO_HOSTS);
-    // add_defaults=0 : nos redirections couvrent deja *.nintendo.net en entier, y compris tout
-    // serveur de telemetrie que Nintendo ajouterait plus tard -> le filet d'Atmosphere n'apporte
-    // rien ici, et la telemetrie est de toute facon null-routee par nos propres lignes.
-    bool i = iniSetDnsMitm(true, false);
-    iniSetBlankProdinfoEmummc(false);    // emuMMC : vrai PRODINFO -> cert device OK (fix 2123-0011)
-    nextendo_purge_leaks();              // logs DNS-MITM + .bak : l'IP du VPS n'a rien a y faire
-    fsdevCommitDevice("sdmc");           // flush SD avant tout reboot
-    return a && b && i;
+    return nextendo_apply_nextendo_ip(g_server_ip);
 }
 
 bool nextendo_apply_nintendo(void) {
@@ -446,7 +552,10 @@ bool nextendo_apply_nintendo(void) {
     // l'echelle du systeme et notre CA restait de confiance — n'importe qui sur le reseau
     // pouvait intercepter le trafic vers le VRAI Nintendo. Sans risque : nextendo_provision_all()
     // repose tout au retour en mode Nextendo.
-    removeTreeRomfs("romfs:/sd", "sdmc:");
+    if (!removeTreeRomfs("romfs:/sd", "sdmc:")) {
+        nextendo_trace("24b removeTreeRomfs a echoue");
+        return false;
+    }
     nextendo_trace("24 removeTreeRomfs ok");
 
     // TELEMETRIE. L'ancien code posait enable_dns_mitm=0, ce qui desactivait du meme coup le
@@ -471,6 +580,99 @@ bool nextendo_apply_nintendo(void) {
     fsdevCommitDevice("sdmc");
     nextendo_trace("27 apply_nintendo: TERMINE");
     return i;
+}
+
+// --- Diagnostic reseau (trace les infos utiles pour 2123-0011 / 2810-1224) ---
+void nextendo_diag_network(void) {
+    char buf[128];
+    
+    // nncs2 UDP connect (ne bloque pas, ne verifie que la validite de l'adresse).
+    // Le test reel de connectivite Pia necessite d'echanger le protocole NEX, hors de
+    // portee ici. On logge au moins la cible configuree.
+    {
+        int fd = socket(AF_INET, SOCK_DGRAM, 0);
+        if (fd >= 0) {
+            struct sockaddr_in sa;
+            memset(&sa, 0, sizeof(sa));
+            sa.sin_family = AF_INET;
+            sa.sin_port = htons(10025);
+            sa.sin_addr.s_addr = inet_addr("164.132.111.120");
+            int rc = connect(fd, (struct sockaddr *)&sa, sizeof(sa));
+            close(fd);
+            snprintf(buf, sizeof(buf), "36 diag: nncs2:10025 (UDP) -> %s", rc == 0 ? "socket ok" : "socket echec");
+        } else {
+            snprintf(buf, sizeof(buf), "36 diag: nncs2:10025 (UDP) -> SOCKET_ECHEC");
+        }
+        nextendo_trace(buf);
+    }
+    {
+        int fd = socket(AF_INET, SOCK_DGRAM, 0);
+        if (fd >= 0) {
+            struct sockaddr_in sa;
+            memset(&sa, 0, sizeof(sa));
+            sa.sin_family = AF_INET;
+            sa.sin_port = htons(10125);
+            sa.sin_addr.s_addr = inet_addr("164.132.111.120");
+            int rc = connect(fd, (struct sockaddr *)&sa, sizeof(sa));
+            close(fd);
+            snprintf(buf, sizeof(buf), "37 diag: nncs2:10125 (UDP) -> %s", rc == 0 ? "socket ok" : "socket echec");
+        } else {
+            snprintf(buf, sizeof(buf), "37 diag: nncs2:10125 (UDP) -> SOCKET_ECHEC");
+        }
+        nextendo_trace(buf);
+    }
+
+    // nncs1 PIA connectivity test (UDP vers le VPS principal, port 10024 + 10025).
+    {
+        int fd = socket(AF_INET, SOCK_DGRAM, 0);
+        if (fd >= 0) {
+            struct sockaddr_in sa;
+            memset(&sa, 0, sizeof(sa));
+            sa.sin_family = AF_INET;
+            sa.sin_port = htons(10024);
+            sa.sin_addr.s_addr = inet_addr(g_server_ip);
+            int rc = connect(fd, (struct sockaddr *)&sa, sizeof(sa));
+            close(fd);
+            snprintf(buf, sizeof(buf), "39 diag: nncs1(PIA):10024 -> %s", rc == 0 ? "socket ok" : "refuse/timeout");
+        } else {
+            snprintf(buf, sizeof(buf), "39 diag: nncs1(PIA):10024 -> SOCKET_ECHEC");
+        }
+        nextendo_trace(buf);
+    }
+    {
+        int fd = socket(AF_INET, SOCK_DGRAM, 0);
+        if (fd >= 0) {
+            struct sockaddr_in sa;
+            memset(&sa, 0, sizeof(sa));
+            sa.sin_family = AF_INET;
+            sa.sin_port = htons(10124);
+            sa.sin_addr.s_addr = inet_addr(g_server_ip);
+            int rc = connect(fd, (struct sockaddr *)&sa, sizeof(sa));
+            close(fd);
+            snprintf(buf, sizeof(buf), "40 diag: nncs1(PIA):10124 -> %s", rc == 0 ? "socket ok" : "refuse/timeout");
+        } else {
+            snprintf(buf, sizeof(buf), "40 diag: nncs1(PIA):10124 -> SOCKET_ECHEC");
+        }
+        nextendo_trace(buf);
+    }
+
+    // Test connectivite BCAT (HTTP au serveur :8095)
+    if (nextendo_current_mode() == 0) {
+        size_t blen = 0;
+        int httpStatus = 0;
+        unsigned char *body = net_http_get(g_server_ip, 8095, "/api/bcat/0100f8f0000a2000/cache", &blen, &httpStatus);
+        snprintf(buf, sizeof(buf), "41 diag: BCAT %s:%d -> HTTP %d (%zu o)", g_server_ip, 8095, httpStatus, blen);
+        nextendo_trace(buf);
+        if (body) free(body);
+    }
+
+    // Verifie que les fichiers hosts sont presents (confirme que le mode Nextendo
+    // a bien ses redirections ; si absent, le mode Nintendo est actif sans surprise).
+    struct stat st;
+    bool hasSys = stat(NEXTENDO_HOSTS_SYSMMC, &st) == 0;
+    bool hasEmu = stat(NEXTENDO_HOSTS_EMUMMC, &st) == 0;
+    snprintf(buf, sizeof(buf), "42 diag: hosts sysmmc=%d emummc=%d", hasSys, hasEmu);
+    nextendo_trace(buf);
 }
 
 Result nextendo_reboot(void) {

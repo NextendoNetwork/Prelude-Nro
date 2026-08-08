@@ -27,6 +27,7 @@
 #include "audio.h"
 
 static Mix_Music *s_music     = NULL;
+static Mix_Music *s_egg_music = NULL;
 static bool       s_audioOpen = false;
 
 bool audio_init(void) {
@@ -47,7 +48,21 @@ bool audio_init(void) {
 
 void audio_exit(void) {
     if (s_music) { Mix_HaltMusic(); Mix_FreeMusic(s_music); s_music = NULL; }
+    if (s_egg_music) { Mix_FreeMusic(s_egg_music); s_egg_music = NULL; }
     if (s_audioOpen) { Mix_CloseAudio(); s_audioOpen = false; }
     Mix_Quit();
     if (SDL_WasInit(SDL_INIT_AUDIO)) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+}
+
+void audio_egg_play(void) {
+    if (!s_audioOpen) return;
+    if (s_music) Mix_PauseMusic();  // pause BGM
+    if (s_egg_music) { Mix_FreeMusic(s_egg_music); s_egg_music = NULL; }
+    s_egg_music = Mix_LoadMUS("romfs:/easteregg/audio.mp3");
+    if (s_egg_music) Mix_PlayMusic(s_egg_music, 1);  // 1 loop
+}
+
+void audio_egg_stop(void) {
+    if (s_egg_music) { Mix_HaltMusic(); Mix_FreeMusic(s_egg_music); s_egg_music = NULL; }
+    if (s_music) Mix_ResumeMusic();  // resume BGM
 }

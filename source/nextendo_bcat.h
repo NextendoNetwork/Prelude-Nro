@@ -14,24 +14,32 @@
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // ============================================================
-//  Nextendo .nro — installation du planning en ligne (BCAT) de Splatoon 2.
-//  Telecharge un "bundle" pret-a-ecrire depuis le serveur Nextendo et le pose dans le
-//  save delivery-cache BCAT du jeu (titre 0100F8F0000A2000). Ecrase l'install precedente.
+//  Nextendo .nro — installation du planning Splatoon 2 via LayeredFS.
+//  Copie les fichiers de donnees (coopdata/*.byaml, vsdata/*.byaml, fesdata/*,
+//  System/GameConfigSetting.xml) depuis la romfs embarque du .nro vers le dossier
+//  LayeredFS d'Atmosphere sur la carte SD pour les regions USA et EUR.
+//  Aucune connexion reseau requise : les donnees sont livrees avec le .nro.
 // ============================================================
 #ifndef NEXTENDO_BCAT_H
 #define NEXTENDO_BCAT_H
 #include <switch.h>
 
 typedef enum {
-    NB_OK = 0,        // installe
-    NB_NET_FAIL,      // telechargement impossible
-    NB_NO_SCHEDULE,   // 204 : rien de publie
-    NB_MOUNT_FAIL,    // save BCAT introuvable (lancer S2 une fois)
-    NB_BAD_BUNDLE,    // bundle illisible
-    NB_WRITE_FAIL     // ecriture / commit save echoues
+    NB_OK = 0,           // installe
+    NB_NET_FAIL,         // telechargement impossible (raison dans le log)
+    NB_NET_CONNECT,      // serveur injoignable (timeout / connexion refusee)
+    NB_NET_TIMEOUT,      // reponse interrompue
+    NB_NET_HTTP_ERR,     // le serveur a repondu un code HTTP different de 200/204
+    NB_NO_SCHEDULE,      // 204 : rien de publie
+    NB_MOUNT_FAIL,       // (obsolete) conserve pour compatibilite main.c
+    NB_BAD_BUNDLE,       // bundle illisible
+    NB_WRITE_FAIL        // ecriture fichier sur la SD echouee
 } nextendo_bcat_result;
 
-// Installe le planning S2 dans son cache BCAT. socketInitializeDefault() doit etre actif.
+// Installe le planning S2 dans le dossier LayeredFS d'Atmosphere.
+// socketInitializeDefault() doit etre actif avant l'appel.
 nextendo_bcat_result nextendo_bcat_install_s2(void);
+
+extern Result g_last_rc;
 
 #endif // NEXTENDO_BCAT_H

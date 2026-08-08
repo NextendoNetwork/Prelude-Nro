@@ -28,11 +28,14 @@
 
 #include "ui.h"
 #include "ui_theme.h"
+#include "nextendo_apply.h"
+#include "lang.h"
 
 #define IMG 200                 // taille des .rgba (200x200)
 #define IMG_BYTES (IMG * IMG * 4)
 
 static Framebuffer s_fb;
+Framebuffer *ui_get_fb(void) { return &s_fb; }
 static FT_Library  s_ft;
 static FT_Face     s_bold, s_semi, s_reg;     // Poppins Bold / SemiBold / Regular
 static u8         *s_bBuf, *s_sBuf, *s_rBuf;  // buffers TTF (gardés en vie)
@@ -144,6 +147,7 @@ static bool loadFace(const char *path, FT_Face *face, u8 **buf) {
     FILE *f = fopen(path, "rb");
     if (!f) return false;
     fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
+    if (sz < 0) { fclose(f); return false; }
     *buf = (u8 *)malloc(sz);
     if (!*buf) { fclose(f); return false; }
     bool ok = (fread(*buf, 1, sz, f) == (size_t)sz);
@@ -204,13 +208,13 @@ static void drawCard(u32 *b, u32 st, int x, bool sel, bool isCurrent, int choice
     int by = y + 268;
     if (isCurrent) {
         // badge ACTUEL (vert) = le mode charge en ce moment
-        const char *bd = "ACTUEL";
+        const char *bd = lang_str(STR_CURRENT_BADGE);
         int bw = measureF(s_bold, 18, bd) + 30, bx = cx - bw / 2;
         roundedCard(b, st, bx, by, bw, 30, 15, packColor(C_GREEN));
         drawCF(b, st, s_bold, cx, by + 21, 18, packColor(COL(0x0C, 0x1A, 0x10)), bd);
     } else if (sel) {
         // badge BASCULER (couleur du mode) = la cible
-        const char *bd = "BASCULER ICI";
+        const char *bd = lang_str(STR_SWITCH_BADGE);
         int bw = measureF(s_bold, 18, bd) + 30, bx = cx - bw / 2;
         roundedCard(b, st, bx, by, bw, 30, 15, packColor(acc));
         drawCF(b, st, s_bold, cx, by + 21, 18, packColor(C_TITLE), bd);
@@ -225,7 +229,7 @@ static void drawS2Bar(u32 *b, u32 st, bool focused) {
                 packColor(focused ? C_CARD_SEL : C_CARD));
     drawCF(b, st, s_semi, FB_W / 2, S2BAR_Y + 40, 25,
            packColor(focused ? C_TITLE : C_SUBTLE),
-           "Splatoon 2   -   Installer le planning en ligne");
+           lang_str(STR_S2_BAR));
 }
 
 void ui_draw_picker(int selection, int current, int focus, const char *status, int updVer) {
@@ -238,14 +242,14 @@ void ui_draw_picker(int selection, int current, int focus, const char *status, i
     // Bandeau de mise a jour OBLIGATOIRE (si une version plus recente existe).
     if (updVer > 0) {
         char m[96];
-        snprintf(m, sizeof(m), "Mise a jour OBLIGATOIRE (v%d)   -   appuie sur Y pour installer", updVer);
+        snprintf(m, sizeof(m), lang_str(STR_UPDATE_BANNER), updVer);
         drawCF(b, st, s_semi, FB_W / 2, 32, 20, packColor(C_RED), m);
     }
 
-    drawCF(b, st, s_bold, FB_W / 2, 84, 42, packColor(C_TITLE), "Prelude");
+    drawCF(b, st, s_bold, FB_W / 2, 84, 42, packColor(C_TITLE), lang_str(STR_TITLE_PRELUDE));
     // sous-titre centre : "Mode actuel : NEXTENDO" (le nom du mode en sa couleur)
     {
-        const char *lbl = "Mode actuel : ";
+        const char *lbl = lang_str(STR_MODE_ACTUAL_PREFIX);
         const char *md  = (current == CHOICE_NEXTENDO) ? "NEXTENDO" : "NINTENDO";
         int wl = measureF(s_reg, 23, lbl), wm = measureF(s_semi, 23, md);
         int sx = FB_W / 2 - (wl + wm) / 2;
@@ -263,19 +267,17 @@ void ui_draw_picker(int selection, int current, int focus, const char *status, i
     int cy = S2BAR_Y + S2BAR_H + 30;   // ~594
     if (focus == FOCUS_S2) {
         drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE),
-               "Telecharge le calendrier des modes de Splatoon 2 et l'installe dans le jeu.");
+               lang_str(STR_DESC_S2));
     } else if (selection == CHOICE_NEXTENDO) {
         drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE),
-               "Serveurs Nextendo : online custom, icones, amis. Compte Nextendo requis.");
+               lang_str(STR_DESC_NEXTENDO));
     } else {
         drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE),
-               "Serveurs officiels Nintendo : fonctionnement normal de la console.");
+               lang_str(STR_DESC_NINTENDO));
     }
 
     drawCF(b, st, s_reg, FB_W / 2, FB_H - 50, 21, packColor(C_SUBTLE),
-           focus == FOCUS_S2
-               ? "A : installer le planning       < >  : changer de choix       B : quitter"
-               : "A : basculer de mode       < >  : changer de choix       B : quitter");
+           focus == FOCUS_S2 ? lang_str(STR_HELP_S2) : lang_str(STR_HELP_MODE));
     if (status && status[0])
         drawCF(b, st, s_semi, FB_W / 2, FB_H - 22, 23, packColor(C_BLUE), status);
 
@@ -303,34 +305,33 @@ void ui_draw_confirm(int selection, bool warnNoEmummc) {
 
     int cx = FB_W / 2;
     drawCF(b, st, s_bold, cx, cyy + 78, 40, packColor(C_TITLE),
-           nx ? "Passer en mode NEXTENDO ?" : "Passer en mode NINTENDO ?");
+           lang_str(nx ? STR_CONFIRM_NEXTENDO : STR_CONFIRM_NINTENDO));
     drawCF(b, st, s_semi, cx, cyy + 138, 27, acc,
-           "La console va REDEMARRER maintenant.");
+           lang_str(STR_CONFIRM_REBOOT));
     drawCF(b, st, s_reg, cx, cyy + 188, 22, packColor(C_SUBTLE),
-           nx ? "Au redemarrage : connexion aux serveurs Nextendo Network."
-              : "Au redemarrage : retour aux serveurs officiels Nintendo.");
+           lang_str(nx ? STR_CONFIRM_RESTART_NEXTENDO : STR_CONFIRM_RESTART_NINTENDO));
 
     if (warn) {
         u32 wc = packColor(C_WARN);
         drawCF(b, st, s_bold, cx, cyy + 240, 25, wc,
-               "ATTENTION : cette console n'a pas d'emuMMC.");
+               lang_str(STR_WARN_TITLE));
         drawCF(b, st, s_reg, cx, cyy + 278, 21, packColor(C_SUBTLE),
-               "Le CFW tourne sur la memoire interne, avec ton vrai identifiant console.");
+               lang_str(STR_WARN_LINE1));
         drawCF(b, st, s_reg, cx, cyy + 306, 21, packColor(C_SUBTLE),
-               "Aucune protection d'identite n'est possible sans casser l'eShop.");
+               lang_str(STR_WARN_LINE2));
         drawCF(b, st, s_reg, cx, cyy + 334, 21, packColor(C_SUBTLE),
-               "Aller EN LIGNE sur le vrai Nintendo depuis ce mode reste a tes risques.");
+               lang_str(STR_WARN_LINE3));
         drawCF(b, st, s_reg, cx, cyy + 362, 21, packColor(C_SUBTLE),
-               "(La telemetrie, elle, reste bloquee.)");
+               lang_str(STR_WARN_LINE4));
     }
 
     drawCF(b, st, s_reg, cx, cyy + (warn ? 400 : 218), 22, packColor(C_SUBTLE),
-           "Ferme tout jeu en cours avant de confirmer.");
+           lang_str(STR_CONFIRM_CLOSE_GAMES));
 
     // rappel des touches, en bas de la carte
     int by = cyy + ch - 46;
-    drawCF(b, st, s_semi, cx - 150, by, 26, packColor(C_GREEN), "A : Confirmer");
-    drawCF(b, st, s_semi, cx + 150, by, 26, packColor(C_SUBTLE), "B : Annuler");
+    drawCF(b, st, s_semi, cx - 150, by, 26, packColor(C_GREEN), lang_str(STR_CONFIRM_A));
+    drawCF(b, st, s_semi, cx + 150, by, 26, packColor(C_SUBTLE), lang_str(STR_CONFIRM_B));
 
     framebufferEnd(&s_fb);
 }
@@ -349,19 +350,19 @@ void ui_draw_s2_info(void) {
     roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
 
     int cx = FB_W / 2;
-    drawCF(b, st, s_bold, cx, cyy + 74, 38, packColor(C_TITLE), "Planning en ligne Splatoon 2");
+    drawCF(b, st, s_bold, cx, cyy + 74, 38, packColor(C_TITLE), lang_str(STR_S2_TITLE));
     drawCF(b, st, s_reg, cx, cyy + 132, 22, packColor(C_SUBTLE),
-           "Telecharge le calendrier des modes (Tourniquet, Salmon Run, Festivals)");
+           lang_str(STR_S2_DESC1));
     drawCF(b, st, s_reg, cx, cyy + 162, 22, packColor(C_SUBTLE),
-           "depuis les serveurs Nextendo et l'installe directement dans Splatoon 2.");
+           lang_str(STR_S2_DESC2));
     drawCF(b, st, s_semi, cx, cyy + 214, 22, acc,
-           "Lance Splatoon 2 au moins une fois avant. Aucun redemarrage requis.");
+           lang_str(STR_S2_DESC3));
     drawCF(b, st, s_semi, cx, cyy + 256, 22, packColor(C_GREEN),
-           "Chaque installation REMPLACE le planning precedent.");
+           lang_str(STR_S2_DESC4));
 
     int by = cyy + ch - 46;
-    drawCF(b, st, s_semi, cx - 160, by, 26, acc, "A : Installer");
-    drawCF(b, st, s_semi, cx + 160, by, 26, packColor(C_SUBTLE), "B : Retour");
+    drawCF(b, st, s_semi, cx - 160, by, 26, acc, lang_str(STR_S2_A));
+    drawCF(b, st, s_semi, cx + 160, by, 26, packColor(C_SUBTLE), lang_str(STR_S2_B));
 
     framebufferEnd(&s_fb);
 }
@@ -374,8 +375,8 @@ void ui_draw_progress(const char *line) {
     for (int y = 0; y < FB_H; y++)
         for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
 
-    drawCF(b, st, s_bold, FB_W / 2, FB_H / 2 - 24, 36, packColor(C_TITLE), "Installation");
-    drawCF(b, st, s_semi, FB_W / 2, FB_H / 2 + 30, 26, packColor(C_S2), line ? line : "Patiente...");
+    drawCF(b, st, s_bold, FB_W / 2, FB_H / 2 - 24, 36, packColor(C_TITLE), lang_str(STR_PROGRESS_TITLE));
+    drawCF(b, st, s_semi, FB_W / 2, FB_H / 2 + 30, 26, packColor(C_S2), line ? line : lang_str(STR_PROGRESS_WAIT));
 
     framebufferEnd(&s_fb);
 }
@@ -396,7 +397,137 @@ void ui_draw_result(const char *title, const char *msg, bool ok) {
     int cx = FB_W / 2;
     drawCF(b, st, s_bold, cx, cyy + 92, 36, acc, title ? title : "");
     drawCF(b, st, s_reg, cx, cyy + 158, 22, packColor(C_TITLE), msg ? msg : "");
-    drawCF(b, st, s_semi, cx, cyy + ch - 44, 24, packColor(C_SUBTLE), "A / B : Retour");
+    drawCF(b, st, s_semi, cx, cyy + ch - 44, 24, packColor(C_SUBTLE), lang_str(STR_RESULT_RETURN));
+
+    framebufferEnd(&s_fb);
+}
+
+// ------- Menu de sélection de langue (R depuis le picker) -------
+void ui_draw_lang_menu(int sel) {
+    u32 st;
+    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
+    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
+    for (int y = 0; y < FB_H; y++)
+        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+
+    u32 acc = packColor(C_BLUE);
+    int cw = 700, ch = 460, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
+    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
+    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
+
+    int cx = FB_W / 2;
+    drawCF(b, st, s_bold, cx, cyy + 60, 36, packColor(C_TITLE), lang_str(STR_LANG_TITLE));
+
+    static const StringID lang_ids[4] = { STR_LANG_EN, STR_LANG_ES, STR_LANG_PT, STR_LANG_FR };
+    for (int i = 0; i < 4; i++) {
+        int rowY = cyy + 120 + i * 70;
+        bool hovered = (i == sel);
+        bool current = (i == g_lang);
+
+        if (hovered)
+            roundedCard(b, st, cxx + 20, rowY - 4, cw - 40, 54, 12, packColor(C_CARD_SEL));
+
+        drawF(b, st, s_semi, cxx + 50, rowY + 22, 28,
+              packColor(hovered ? C_TITLE : (current ? C_GREEN : C_SUBTLE)),
+              lang_str(lang_ids[i]));
+
+        if (current) {
+            const char *defLabel = lang_str(STR_LANG_DEFAULT);
+            int dw = measureF(s_reg, 18, defLabel);
+            drawF(b, st, s_reg, cxx + cw - 50 - dw, rowY + 24, 18,
+                  packColor(C_GREEN), defLabel);
+        }
+    }
+
+    drawCF(b, st, s_semi, cx, cyy + ch - 40, 22, packColor(C_GREEN),
+           lang_str(STR_LANG_A_SELECT));
+    drawCF(b, st, s_semi, cx, cyy + ch - 12, 20, packColor(C_SUBTLE),
+           lang_str(STR_LANG_B_BACK));
+
+    framebufferEnd(&s_fb);
+}
+
+// ------- Ecran de confirmation avant mise a jour -------
+void ui_draw_upd_confirm(int buildVer) {
+    u32 st;
+    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
+    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
+    for (int y = 0; y < FB_H; y++)
+        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+
+    u32 acc = packColor(C_BLUE);
+    int cw = 700, ch = 360, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
+    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
+    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
+
+    int cx = FB_W / 2;
+    drawCF(b, st, s_bold, cx, cyy + 70, 36, packColor(C_TITLE),
+           lang_str(STR_UPD_CONFIRM_TITLE));
+
+    char ver[64];
+    // lang_str fournit un format avec %%d — controlee par le developpeur, safe
+    char updFmt[64];
+    strncpy(updFmt, lang_str(STR_UPD_CONFIRM_VERSION), sizeof(updFmt) - 1);
+    updFmt[sizeof(updFmt) - 1] = '\0';
+    snprintf(ver, sizeof(ver), updFmt, buildVer);
+    drawCF(b, st, s_semi, cx, cyy + 130, 24, acc, ver);
+
+    drawCF(b, st, s_reg, cx, cyy + 180, 22, packColor(C_SUBTLE),
+           lang_str(STR_UPD_CONFIRM_DESC));
+
+    int by = cyy + ch - 50;
+    drawCF(b, st, s_semi, cx - 150, by, 24, packColor(C_GREEN),
+           lang_str(STR_UPD_CONFIRM_A));
+    drawCF(b, st, s_semi, cx + 150, by, 24, packColor(C_SUBTLE),
+           lang_str(STR_UPD_CONFIRM_B));
+
+    framebufferEnd(&s_fb);
+}
+
+// ------- Toast semi-transparent en bas de l'écran -------
+void ui_draw_toast(const char *text) {
+    u32 st;
+    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
+    u32 sw = st / sizeof(u32);
+
+    int tw = measureF(s_semi, 24, text);
+    int pad = 40;
+    int toastW = tw + pad * 2;
+    int toastH = 60;
+    int toastX = (FB_W - toastW) / 2;
+    int toastY = FB_H - toastH - 40;
+
+    // Fond semi-transparent noir
+    for (int y = toastY; y < toastY + toastH && y < FB_H; y++)
+        for (int x = toastX; x < toastX + toastW && x < FB_W; x++)
+            b[y * (sw) + x] = RGBA8(0, 0, 0, 200);
+
+    // Bordure arrondie (simulation)
+    u32 border = RGBA8(0x44, 0x88, 0xFF, 255);
+    for (int x = toastX; x < toastX + toastW && x < FB_W; x++) {
+        b[toastY * sw + x] = border;
+        b[(toastY + toastH - 1) * sw + x] = border;
+    }
+    for (int y = toastY; y < toastY + toastH && y < FB_H; y++) {
+        b[y * sw + toastX] = border;
+        b[y * sw + toastX + toastW - 1] = border;
+    }
+
+    // Texte centré
+    drawCF(b, st, s_semi, FB_W / 2, toastY + toastH / 2 + 8, 24, RGBA8(0xFF, 0xFF, 0xFF, 255), text);
+
+    framebufferEnd(&s_fb);
+}
+
+void ui_draw_loading(const char *text) {
+    u32 st;
+    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
+    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
+    for (int y = 0; y < FB_H; y++)
+        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+
+    drawCF(b, st, s_bold, FB_W / 2, FB_H / 2 - 24, 36, packColor(C_TITLE), "Prelude");
+    drawCF(b, st, s_semi, FB_W / 2, FB_H / 2 + 30, 26, packColor(C_S2), text ? text : "Cargando...");
 
     framebufferEnd(&s_fb);
 }

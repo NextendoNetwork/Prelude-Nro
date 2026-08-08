@@ -1,4 +1,4 @@
-// Prelude — Nintendo Switch homebrew for the Nextendo Network.
+// Prelude -- Nintendo Switch homebrew for the Nextendo Network.
 // Copyright (C) 2026 Nextendo Network
 //
 // This program is free software: you can redistribute it and/or modify it under
@@ -14,7 +14,10 @@
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // ============================================================
-//  Nextendo .nro — auto-mise a jour.
+//  Nextendo .nro -- auto-update via GitHub Releases API.
+//  Checks https://api.github.com/repos/Juanjo3222/Prelude-Nro/releases/latest
+//  for the latest version tag, compares with NEXTENDO_BUILD, and downloads
+//  the .nro asset if a newer version is available.
 // ============================================================
 #include <switch.h>
 #include <string.h>
@@ -25,88 +28,138 @@
 #include "nextendo_update.h"
 #include "nextendo_net.h"
 
-#define UP_IP        "203.0.113.10"
-#define UP_PORT      8095
-#define UP_LATEST    "/api/nro/latest"
-#define UP_DOWNLOAD  "/api/nro/download"
+// GitHub API for latest release
+#define GH_API_HOST  "api.github.com"
+#define GH_API_PATH  "/repos/Juanjo3222/Prelude-Nro/releases/latest"
+#define GH_API_PORT  443
+
 #define NRO_PATH     "sdmc:/switch/nextendo.nro"
 #define NRO_TMP      "sdmc:/switch/nextendo.nro.new"
 
-// Extrait la valeur entiere d'une cle JSON "key":N dans un buffer non NUL-termine.
-static long json_int(const unsigned char *b, size_t len, const char *key) {
-    size_t kl = strlen(key);
-    for (size_t i = 0; i + kl < len; i++) {
-        if (memcmp(b + i, key, kl) == 0) {
-            size_t j = i + kl;
-            while (j < len && (b[j] == ' ' || b[j] == ':' || b[j] == '"')) j++;
-            long v = 0;
-            bool got = false;
-            while (j < len && b[j] >= '0' && b[j] <= '9') { v = v * 10 + (b[j] - '0'); j++; got = true; }
-            if (got) return v;
+static char g_download_url[512] = {0};
+static long g_download_size = 0;
+
+// Parse integer from JSON field like: "tag_name":"v3.0.3" -> extract build number
+// Also handle "browser_download_url" and "size" fields
+static bool parse_github_json(const unsigned char *b, size_t len, long *build, char *url, size_t urlcap, long *size) {
+    // Extract tag_name: "tag_name":"vX.Y.Z" -> parse the version
+    const char *tag_key = "\"tag_name\":\"";
+    char *tp = strstr((const char*)b, tag_key);
+    if (!tp) return false;
+    tp += strlen(tag_key);
+    // Parse vX.Y.Z — extract numbers after each dot
+    int maj = 0, min = 0, patch = 0;
+    if (*tp == 'v' || *tp == 'V') tp++;
+    maj = (int)strtol(tp, &tp, 10);
+    if (*tp == '.') tp++;
+    min = (int)strtol(tp, &tp, 10);
+    if (*tp == '.') tp++;
+    patch = (int)strtol(tp, NULL, 10);
+    // Use patch as build (or min*100+patch)
+    *build = patch > 0 ? (long)patch : (long)(min * 100);
+
+    // Extract browser_download_url
+    const char *url_key = "\"browser_download_url\":\"";
+    char *up = strstr((const char*)b, url_key);
+    if (up) {
+        up += strlen(url_key);
+        char *ue = strchr(up, '"');
+        if (ue) {
+            size_t ul = (size_t)(ue - up);
+            if (ul < urlcap) { memcpy(url, up, ul); url[ul] = '\0'; }
         }
     }
-    return -1;
+
+    // Extract size
+    const char *size_key = "\"size\":";
+    char *sp = strstr((const char*)b, size_key);
+    if (sp) {
+        sp += strlen(size_key);
+        *size = strtol(sp, NULL, 10);
+    }
+
+    return *build > 0;
 }
 
 NextendoUpdate nextendo_update_check(void) {
     NextendoUpdate u = { false, 0, 0 };
     socketInitializeDefault();
+    Result rc = sslInitialize(4);
+    if (R_FAILED(rc)) { socketExit(); return u; }
+
     size_t len = 0;
     int status = 0;
-    unsigned char *body = net_http_get(UP_IP, UP_PORT, UP_LATEST, &len, &status);
+    unsigned char *body = net_https_get(GH_API_HOST, GH_API_PATH, &len, &status);
+    sslExit();
     socketExit();
+
     if (body && status == 200) {
-        long ver = json_int(body, len, "\"version\"");
-        long sz  = json_int(body, len, "\"size\"");
-        if (ver > NEXTENDO_BUILD) {
-            u.available = true;
-            u.latest = (int)ver;
-            u.size = sz;
+        long build = 0; long sz = 0;
+        if (parse_github_json(body, len, &build, g_download_url, sizeof(g_download_url), &sz)) {
+            if (build > NEXTENDO_BUILD && sz > 4096) {
+                u.available = true;
+                u.latest = (int)build;
+                u.size = sz;
+                g_download_size = sz;
+            }
         }
+        free(body);
     }
-    if (body) free(body);
     return u;
 }
 
+// Download and apply the update. Requires sslInitialize() before.
 nextendo_update_result nextendo_update_apply(long expectedSize) {
-    socketInitializeDefault();
-    size_t len = 0;
-    int status = 0;
-    unsigned char *body = net_http_get(UP_IP, UP_PORT, UP_DOWNLOAD, &len, &status);
-    socketExit();
+    if (g_download_url[0] == '\0') return NUP_NET_FAIL;
+    long expected = expectedSize > 0 ? expectedSize : g_download_size;
 
-    if (!body) return NUP_NET_FAIL;
-    if (status != 200 || len < 4096) { free(body); return NUP_NET_FAIL; }   // un .nro fait > 4 Ko
-    if (expectedSize > 0 && (long)len != expectedSize) { free(body); return NUP_SIZE_FAIL; }
-
-    // Ecrit d'abord dans un .new temporaire (cree /switch si la carte ne l'a pas).
     FILE *f = fopen(NRO_TMP, "wb");
     if (!f) {
         mkdir("sdmc:/switch", 0777);
         f = fopen(NRO_TMP, "wb");
     }
-    if (!f) { free(body); return NUP_WRITE_FAIL; }
-    bool ok = (fwrite(body, 1, len, f) == len);
-    fflush(f);
+    if (!f) return NUP_WRITE_FAIL;
+
+    socketInitializeDefault();
+    Result rc = sslInitialize(4);
+    if (R_FAILED(rc)) { fclose(f); socketExit(); return NUP_NET_FAIL; }
+
+    char host[256] = {0};
+    char path[1024] = {0};
+    if (sscanf(g_download_url, "https://%255[^/]%1023s", host, path) < 2) {
+        sslExit(); fclose(f); remove(NRO_TMP); socketExit(); return NUP_NET_FAIL;
+    }
+
+    int status = 0;
+    long len = net_https_get_to_file(host, path, f, &status);
     fclose(f);
-    if (!ok) { remove(NRO_TMP); free(body); return NUP_WRITE_FAIL; }
+    sslExit();
+    socketExit();
+
+    if (len == -2) { remove(NRO_TMP); return NUP_WRITE_FAIL; }
+    if (len < 0)   { remove(NRO_TMP); return NUP_NET_FAIL; }
+    if (status != 200 || len < 4096) { remove(NRO_TMP); return NUP_NET_FAIL; }
+    if (expected > 0 && len != expected) { remove(NRO_TMP); return NUP_SIZE_FAIL; }
     fsdevCommitDevice("sdmc");
 
-    // Remplace l'ancien .nro (le courant tourne depuis la RAM -> ecrasement sans risque).
-    // rename() echoue sur certaines cartes SD (fatfs) : dans ce cas on ecrit NRO_PATH
-    // directement (on garde 'body' jusqu'ici pour ce secours) au lieu de laisser
-    // l'utilisateur sans .nro. C'etait la cause du "impossible d'ecrire sur la carte SD".
+    // Replace the old .nro (current runs from RAM, safe to overwrite).
+    // rename() can fail on FAT32; fallback to copy.
     remove(NRO_PATH);
     if (rename(NRO_TMP, NRO_PATH) != 0) {
-        FILE *g = fopen(NRO_PATH, "wb");
-        if (!g) { free(body); return NUP_WRITE_FAIL; }
-        bool ok2 = (fwrite(body, 1, len, g) == len);
-        fflush(g);
-        fclose(g);
+        FILE *src = fopen(NRO_TMP, "rb");
+        if (!src) { remove(NRO_TMP); return NUP_WRITE_FAIL; }
+        FILE *dst = fopen(NRO_PATH, "wb");
+        if (!dst) { fclose(src); remove(NRO_TMP); return NUP_WRITE_FAIL; }
+        char cbuf[16384];
+        size_t n;
+        bool ok = true;
+        while ((n = fread(cbuf, 1, sizeof(cbuf), src)) > 0)
+            if (fwrite(cbuf, 1, n, dst) != n) { ok = false; break; }
+        fclose(src); fclose(dst);
         remove(NRO_TMP);
-        if (!ok2) { free(body); return NUP_WRITE_FAIL; }
+        if (!ok) return NUP_WRITE_FAIL;
     }
-    free(body);
+
     fsdevCommitDevice("sdmc");
     return NUP_OK;
 }

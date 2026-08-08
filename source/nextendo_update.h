@@ -37,10 +37,10 @@
 //           confine par DNS-MITM donc l'identite ne fuit jamais = safe). Mode NINTENDO ->
 //           blank_prodinfo_emummc=1 (identite blanche -> anti-ban si online sur le vrai Nintendo
 //           en emuMMC). Le sysNAND (blank_prodinfo_sysmmc) n'est JAMAIS touche.
-// build 9 : (a) FIX NAT : l'IP nncs2 codee en dur (203.0.113.11) pointait sur l'ancienne
+// build 9 : (a) FIX NAT : l'IP nncs2 codee en dur (178.105.220.158) pointait sur l'ancienne
 //           machine nncs2, desormais hors service -> Pia n'obtenait jamais la 2e sonde -> NAT
-//           jamais complete -> MK8/S2 tombaient en 2618-201. Remplacee par le serveur
-//           203.0.113.11 qui fait tourner le meme responder. (b) PURGE des fichiers laisses par les anciens builds (network_mitm
+//           jamais complete -> MK8/S2 tombaient en 2618-201. Remplacee par le VPS OVH
+//           164.132.111.120 qui fait tourner le meme responder. (b) PURGE des fichiers laisses par les anciens builds (network_mitm
 //           4200000000000666, anciens emplacements du bundle CA navigateur, IPS d'un build-id
 //           qui n'est plus cible) : appliquee DANS LES DEUX MODES, donc une console qui a un
 //           vieux Prelude est nettoyee des le 1er lancement. En mode NINTENDO c'est critique :
@@ -85,7 +85,43 @@
 //           La trace est GARDEE : le gel du build 10 n'a jamais ete explique (le suspect spl a ete
 //           innocente par la trace elle-meme), donc si un joueur le revit, prelude_trace.txt est
 //           notre seul temoin. Elle repart de zero a chaque lancement.
-#define NEXTENDO_BUILD 12
+// build 13 : ECRAN DE REVUE AVANT APPLICATION (revertido en build 14). Mostraba los cambios
+//           de config antes de aplicar. Causaba confusión y se revirtió al confirm estático.
+// build 14 : REVERT del config review screen. Vuelve al ui_draw_confirm original.
+//           Agregado GitHub Actions workflow para builds automáticos.
+// v2.0.1 : Major bump + fix build 20. Hosts actualizados con redirecciones a VPS para penne_ids, dauth, srv.nintendo.net.
+// Anterior v2.0.0 tenia NEXTENDO_BUILD 0, lo que provocaba falso "Mise à jour OBLIGATOIRE" (server v12 > build 0).
+// v2.0.3 : Fix phantom update popup. Remove *.nintendo.net wildcard to let d4c resolve to real Nintendo.
+//          En 22.5.0 el SSL del VPS no es confiable (disable_ca_verification no cubre 22.5.0),
+//          nim no recibe meta de actualizacion -> popup fantasma. Al resolver d4c al Nintendo real,
+//          22.5.0 se ve como "ultima version" -> sin popup.
+// build 24 : Fix browser conntest (remove *.nintendowifi.net). Better BCAT error diagnostics with
+//            specific network error codes (connect/timeout/HTTP). Added PIA + BCAT connectivity
+//            tests to network diagnostics.
+// build 25 : Auto-create BCAT save data if missing (fix Splatoon 2 schedule without launching S2).
+//            Update confirmation screen (Y -> ask -> A = install, B = cancel) instead of immediate download.
+// build 28 : v2.0.9. Fix input freeze (consoleUpdate(NULL) in main loop).
+// build 29 : v2.1.0. Auto-update via GitHub API (HTTPS) directly, no VPS dependency.
+//            Uses Switch native SSL service for HTTPS. Adds net_https_get/_to_file.
+// build 30 : v2.1.1. Startup update check via HTTP (no SSL) to fix 'Función no disponible'
+//            on login after exiting Prelude (sslInit/sslExit side effect on system SSL service).
+// build 31 : v2.1.2. Fix browser "Función no disponible". Remove api.hac.lp1.ctest.srv.nintendo.net
+//            and wildcards *.srv.nintendo.net / *srv.nintendo.net from DNS-MITM hosts so the
+//            browser conntest (introduced FW 18.0+) resolves to real Nintendo instead of VPS.
+// build 32 : v2.1.3. Fix Splatoon 2 schedule installer. Replace BCAT SaveData mount with
+//            Atmosphere LayeredFS (sdmc:/atmosphere/contents/<title_id>/romfs/DebugUnderPilot/bcat/)
+//            for both USA (01003BC0000A0000) and EUR (0100F8F0000A2000) versions.
+// build 33 : v2.1.4. Set real Nextendo server IP (51.178.29.194) in config replacing placeholder.
+// build 34 : v2.1.5. Splatoon 2 schedule: embed .byaml/.bfres data in NRO romfs instead of
+//            downloading from server (which returned "no available server"). The installer now
+//            copies files from romfs:/bcatdata/ to LayeredFS paths on SD — no network needed.
+// build 35 : v3.0.0. New BCAT schedules (Aug 3 EU, Jun 29 US). Wildcard g2*.s.n.srv.nintendo.net
+//            covers ALL game NEX secure servers (S2, MK8, SSBU, ACNH, Strikers). Fix linking
+//            (extras.self nxAccountBlob, api/token revert). NDAS aauth host + handler.
+// build 36 : v3.0.2. Remove *.op2.nintendo.net wildcard (caused 2219-4001 on ACNH). Add
+//            conntest.nintendowifi.net + ctest.cdn.nintendo.net redirects (fix browser
+//            "This feature is not available"). BCAT from bcat-seed.zip.
+#define NEXTENDO_BUILD 39
 
 typedef struct {
     bool available;   // une version > NEXTENDO_BUILD est dispo
