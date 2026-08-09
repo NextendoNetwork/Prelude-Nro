@@ -286,7 +286,9 @@ int main(int argc, char **argv) {
             ui_draw_progress(lang_str(STR_STATUS_DOWNLOAD_SCHEDULE));
             svcSleepThread(150000000ULL);
             socketInitializeDefault();
-            nextendo_bcat_result res = nextendo_bcat_install_s2();
+            Result sslrc = sslInitialize(4);
+            nextendo_bcat_result res = R_SUCCEEDED(sslrc) ? nextendo_bcat_install_s2() : NB_NET_FAIL;
+            if (R_SUCCEEDED(sslrc)) sslExit();
             socketExit();
             rOk = (res == NB_OK);
             switch (res) {

@@ -16,14 +16,17 @@
 // ============================================================
 //  Nextendo .nro — Splatoon 2 schedule installer via LayeredFS.
 //
-//  Copies pre-embedded payload files from the NRO's own romfs
-//  (coopdata, vsdata, fesdata, System/GameConfigSetting.xml)
-//  directly into Atmosphere's LayeredFS override path:
-//    sdmc:/atmosphere/contents/<title_id>/romfs/
-//  Works for both USA (01003BC0000A0000) and EUR (0100F8F0000A2000).
+//  Downloads the per-title schedule zip from the account API:
+//      GET https://nextendo.network/api/bcat/<titleId>
+//  (streams bcat_store/<titleId>.zip, entries at the zip root:
+//   coopdata/ vsdata/ fesdata/) and extracts it into Atmosphere's
+//  LayeredFS override path:
+//      sdmc:/atmosphere/contents/<title_id>/romfs/DebugUnderPilot/bcat/
+//  for USA (01003BC0000A0000), EUR (0100F8F0000A2000) and JPN
+//  (01003C700009C800).
 //
-//  No network download, no NXBC bundle parsing. The files are shipped
-//  inside the .nro and updated with each new release.
+//  System/GameConfigSetting.xml (static game config, NOT in the zip) and
+//  dummy/ are still copied from the NRO's own romfs.
 // ============================================================
 #include <switch.h>
 #include <string.h>
@@ -31,15 +34,23 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <errno.h>
+#include <ctype.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
 
 #include "nextendo_bcat.h"
+#include "nextendo_net.h"
+#include "miniz.h"
 
+#define BCAT_HOST       "nextendo.network"
+#define BCAT_API_PATH   "/api/bcat/%s"
+#define ZIP_TMP         "sdmc:/nextendo_bcat_tmp.zip"
 #define ROMFS_BCAT_BASE "romfs:/bcatdata"
 #define LAYEREDFS_BASE  "sdmc:/atmosphere/contents/%s/romfs"
 #define LOG_PATH        "sdmc:/nextendo_bcat.log"
+
+#define BCAT_ERR_WRITE  (-100)  // downloadZip: SD write failure (distinct from NET_ERR_*)
 
 static FILE *g_log = NULL;
 Result g_last_rc = 0;
@@ -54,14 +65,16 @@ static void logf_(const char *fmt, ...) {
     fflush(g_log);
 }
 
-// mkdir -p for Switch SD paths (e.g. "sdmc:/a/b/c")
+static void toLowerInPlace(char *s) {
+    for (; *s; s++) *s = (char)tolower((unsigned char)*s);
+}
+
 static bool ensureDir(const char *path) {
     char tmp[FS_MAX_PATH];
     size_t len = strnlen(path, sizeof(tmp) - 1);
     memcpy(tmp, path, len);
     tmp[len] = '\0';
 
-    // Walk past device prefix (e.g. "sdmc:")
     char *p = strchr(tmp, ':');
     p = p ? p + 1 : tmp;
     if (*p == '/') p++;
@@ -78,7 +91,6 @@ static bool ensureDir(const char *path) {
     return rc == 0 || errno == EEXIST;
 }
 
-// Recursively remove a directory tree.
 static void wipeTree(const char *path) {
     DIR *d = opendir(path);
     if (!d) return;
@@ -98,12 +110,10 @@ static void wipeTree(const char *path) {
     closedir(d);
 }
 
-// Copy a single file from romfs to sdmc.
 static bool copyFile(const char *src, const char *dst) {
     FILE *in = fopen(src, "rb");
     if (!in) { logf_("  ECHEC fopen source %s", src); return false; }
 
-    // Ensure the parent directory exists (dst is a file path).
     char parent[FS_MAX_PATH];
     size_t plen = strnlen(dst, sizeof(parent) - 1);
     if (plen >= sizeof(parent)) plen = sizeof(parent) - 1;
@@ -137,9 +147,7 @@ static bool copyFile(const char *src, const char *dst) {
     return ok;
 }
 
-// Recursive copy of a directory tree. Mirrors the pattern used by
-// nextendo_apply.c::copyTreeRomfs for the cert/patch stack.
-static bool copyTree(const char *srcDir, const char *dstDir) {
+static bool copyTreeSimple(const char *srcDir, const char *dstDir) {
     DIR *d = opendir(srcDir);
     if (!d) { logf_("  opendir ECHEC %s", srcDir); return false; }
     struct dirent *e;
@@ -154,7 +162,7 @@ static bool copyTree(const char *srcDir, const char *dstDir) {
             if (!ensureDir(dp)) {
                 logf_("  ECHEC mkdir %s", dp);
                 allOk = false;
-            } else if (!copyTree(sp, dp)) {
+            } else if (!copyTreeSimple(sp, dp)) {
                 allOk = false;
             }
         } else {
@@ -169,36 +177,169 @@ static bool copyTree(const char *srcDir, const char *dstDir) {
     return allOk;
 }
 
-nextendo_bcat_result nextendo_bcat_install_s2(void) {
-    g_log = fopen(LOG_PATH, "w");
-    logf_("=== Nextendo BCAT install S2 (v5 — romfs embarquee) ===");
+static bool safeEntryPath(const char *p) {
+    if (!p || !*p) return false;
+    size_t len = strlen(p);
+    if (len > 512) return false;
+    if (strchr(p, ':') || p[0] == '/' || strchr(p, '\\')) return false;
+    const char *seg = p;
+    while (*seg) {
+        const char *slash = strchr(seg, '/');
+        size_t slen = slash ? (size_t)(slash - seg) : strlen(seg);
+        if (slen == 1 && seg[0] == '.') return false;
+        if (slen == 2 && seg[0] == '.' && seg[1] == '.') return false;
+        if (!slash) break;
+        seg = slash + 1;
+    }
+    return true;
+}
 
-    const char *regionIds[] = { "01003BC0000A0000", "0100F8F0000A2000" };
-    bool anyOk = false;
+static int downloadZip(const char *titleIdLower) {
+    char apiPath[64];
+    snprintf(apiPath, sizeof(apiPath), BCAT_API_PATH, titleIdLower);
 
-    for (int r = 0; r < 2; r++) {
-        char srcBase[FS_MAX_PATH], dstBase[FS_MAX_PATH];
-        snprintf(srcBase, sizeof(srcBase), "%s/%s/romfs", ROMFS_BCAT_BASE, regionIds[r]);
-        snprintf(dstBase, sizeof(dstBase), LAYEREDFS_BASE,  regionIds[r]);
+    FILE *f = fopen(ZIP_TMP, "wb");
+    if (!f) { logf_("  ECHEC fopen tmp %s", ZIP_TMP); return NET_ERR_SOCKET; }
 
-        logf_("--- region %s ---", regionIds[r]);
-        logf_("  source romfs: %s", srcBase);
-        logf_("  dest   sdmc:  %s", dstBase);
+    int status = 0;
+    long len = net_https_get_to_file(BCAT_HOST, apiPath, f, &status);
+    fclose(f);
 
-        struct stat st;
-        if (stat(srcBase, &st) != 0 || !S_ISDIR(st.st_mode)) {
-            logf_("  INEXISTANT dans la romfs — ce build ne couvre peut-etre pas cette region");
+    if (status == 204) { remove(ZIP_TMP); return 204; }
+    if (status != 200) { remove(ZIP_TMP); return status > 0 ? status : NET_ERR_PROTO; }
+    if (len == -2)     { remove(ZIP_TMP); return BCAT_ERR_WRITE; }
+    if (len < 0)       { remove(ZIP_TMP); return NET_ERR_TIMEOUT; }
+    if (len < 100)     { remove(ZIP_TMP); return NET_ERR_PROTO; }
+    return 0;
+}
+
+static bool extractZip(const char *dstBase) {
+    mz_zip_archive zip;
+    memset(&zip, 0, sizeof(zip));
+    if (!mz_zip_reader_init_file(&zip, ZIP_TMP, 0)) {
+        logf_("  ECHEC mz_zip_reader_init_file (zip invalide)");
+        return false;
+    }
+
+    mz_uint n = mz_zip_reader_get_num_files(&zip);
+    logf_("  zip: %u entree(s)", (unsigned)n);
+    if (n == 0) { mz_zip_reader_end(&zip); return false; }
+
+    bool allOk = true;
+    for (mz_uint i = 0; i < n; i++) {
+        mz_zip_archive_file_stat st;
+        if (!mz_zip_reader_file_stat(&zip, i, &st)) { allOk = false; continue; }
+        if (st.m_is_directory) continue;
+
+        if (!safeEntryPath(st.m_filename)) {
+            logf_("  ENTREE REFUSEE (path invalide): %s", st.m_filename);
+            allOk = false;
             continue;
         }
 
-        char debugDir[FS_MAX_PATH];
-        snprintf(debugDir, sizeof(debugDir), "%s/DebugUnderPilot", dstBase);
-        wipeTree(debugDir); rmdir(debugDir);
-        char sysDir[FS_MAX_PATH];
-        snprintf(sysDir, sizeof(sysDir), "%s/System", dstBase);
-        wipeTree(sysDir); rmdir(sysDir);
+        char dst[FS_MAX_PATH];
+        snprintf(dst, sizeof(dst), "%s/%s", dstBase, st.m_filename);
 
-        if (copyTree(srcBase, dstBase)) {
+        char parent[FS_MAX_PATH];
+        size_t plen = strnlen(dst, sizeof(parent) - 1);
+        memcpy(parent, dst, plen);
+        parent[plen] = '\0';
+        char *slash = strrchr(parent, '/');
+        if (slash) {
+            *slash = '\0';
+            if (!ensureDir(parent)) {
+                logf_("  ECHEC ensureDir %s", parent);
+                allOk = false;
+                continue;
+            }
+        }
+
+        if (!mz_zip_reader_extract_to_file(&zip, i, dst, 0)) {
+            logf_("  ECHEC extraction %s", st.m_filename);
+            allOk = false;
+        } else {
+            logf_("  + %s", st.m_filename);
+        }
+    }
+    mz_zip_reader_end(&zip);
+    return allOk;
+}
+
+static bool copyStatic(const char *titleId, const char *romfsBase) {
+    char srcBase[FS_MAX_PATH];
+    snprintf(srcBase, sizeof(srcBase), "%s/%s/romfs", ROMFS_BCAT_BASE, titleId);
+
+    struct stat st;
+    bool ok = true;
+
+    char sysSrc[FS_MAX_PATH], sysDst[FS_MAX_PATH];
+    snprintf(sysSrc, sizeof(sysSrc), "%s/System", srcBase);
+    snprintf(sysDst, sizeof(sysDst), "%s/System", romfsBase);
+    if (stat(sysSrc, &st) == 0 && S_ISDIR(st.st_mode))
+        ok = copyTreeSimple(sysSrc, sysDst) && ok;
+
+    char dumSrc[FS_MAX_PATH], dumDst[FS_MAX_PATH];
+    snprintf(dumSrc, sizeof(dumSrc), "%s/DebugUnderPilot/bcat/dummy", srcBase);
+    snprintf(dumDst, sizeof(dumDst), "%s/DebugUnderPilot/bcat/dummy", romfsBase);
+    if (stat(dumSrc, &st) == 0 && S_ISDIR(st.st_mode))
+        ok = copyTreeSimple(dumSrc, dumDst) && ok;
+
+    return ok;
+}
+
+nextendo_bcat_result nextendo_bcat_install_s2(void) {
+    g_log = fopen(LOG_PATH, "w");
+    logf_("=== Nextendo BCAT install S2 (v6 — download zip API) ===");
+
+    const char *regionIds[] = { "01003BC0000A0000", "0100F8F0000A2000" };
+    bool anyOk = false;
+    bool anyNoSchedule = false;
+    nextendo_bcat_result netRes = NB_OK;
+
+    for (int r = 0; r < 2; r++) {
+        char titleIdLower[32];
+        snprintf(titleIdLower, sizeof(titleIdLower), "%s", regionIds[r]);
+        toLowerInPlace(titleIdLower);
+
+        char romfsBase[FS_MAX_PATH];
+        snprintf(romfsBase, sizeof(romfsBase), LAYEREDFS_BASE, regionIds[r]);
+
+        char dstBase[FS_MAX_PATH];
+        snprintf(dstBase, sizeof(dstBase), "%s/DebugUnderPilot/bcat", romfsBase);
+
+        logf_("--- region %s ---", regionIds[r]);
+        logf_("  GET /api/bcat/%s", titleIdLower);
+        logf_("  dest   sdmc:  %s", dstBase);
+
+        int rc = downloadZip(titleIdLower);
+        if (rc == 204) {
+            logf_("  204 : rien de publie pour ce titre");
+            anyNoSchedule = true;
+            continue;
+        }
+        if (rc != 0) {
+            logf_("  ECHEC telechargement (status=%d)", rc);
+            if (rc == NET_ERR_TIMEOUT)      netRes = NB_NET_TIMEOUT;
+            else if (rc == NET_ERR_CONNECT) netRes = NB_NET_CONNECT;
+            else if (rc == BCAT_ERR_WRITE)  netRes = NB_WRITE_FAIL;
+            else if (rc > 0)                netRes = NB_NET_HTTP_ERR;
+            else                            netRes = NB_NET_FAIL;
+            continue;
+        }
+
+        char tree[FS_MAX_PATH];
+        snprintf(tree, sizeof(tree), "%s/DebugUnderPilot", romfsBase);
+        wipeTree(tree); rmdir(tree);
+        snprintf(tree, sizeof(tree), "%s/System", romfsBase);
+        wipeTree(tree); rmdir(tree);
+
+        bool ok = extractZip(dstBase);
+        ok = copyStatic(regionIds[r], romfsBase) && ok;
+
+        remove(ZIP_TMP);
+        fsdevCommitDevice("sdmc");
+
+        if (ok) {
             logf_("  region %s: OK", regionIds[r]);
             anyOk = true;
         } else {
@@ -206,9 +347,11 @@ nextendo_bcat_result nextendo_bcat_install_s2(void) {
         }
     }
 
-    logf_("=== resultat: %s ===", anyOk ? "OK" : "ECHEC");
+    logf_("=== resultat: %s ===", anyOk ? "OK" : (anyNoSchedule ? "NO SCHEDULE" : "ECHEC"));
     if (g_log) { fclose(g_log); g_log = NULL; }
 
     if (anyOk) return NB_OK;
+    if (anyNoSchedule) return NB_NO_SCHEDULE;
+    if (netRes != NB_OK) return netRes;
     return NB_WRITE_FAIL;
 }
