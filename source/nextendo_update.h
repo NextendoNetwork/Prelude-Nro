@@ -122,13 +122,20 @@
 //            conntest.nintendowifi.net + ctest.cdn.nintendo.net redirects (fix browser
 //            "This feature is not available"). BCAT from bcat-seed.zip.
 // build 40 : v3.0.6. MK8 secure-server (g2b309e01-lp1) now routes to the production IP
-//            (164.132.111.120) instead of the current server, where Mario Kart has its
-//            players. Kept AFTER the g2* wildcard: "last matching line wins" in Atmosphere.
+//           (164.132.111.120) instead of the current server, where Mario Kart has its
+//           players. Kept AFTER the g2* wildcard: "last matching line wins" in Atmosphere.
 #define NEXTENDO_BUILD 40
 
+// Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
+// Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
+// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.0.6), pas des compteurs.
+#define NEXTENDO_VERSION_MAJOR 3
+#define NEXTENDO_VERSION_MINOR 0
+#define NEXTENDO_VERSION_PATCH 6
+
 typedef struct {
-    bool available;   // une version > NEXTENDO_BUILD est dispo
-    int  latest;      // numero de version serveur
+    bool available;   // une version semver > NEXTENDO_VERSION_* est dispo
+    int  maj, min, patch;  // version serveur (du tag semver)
     long size;        // taille attendue du .nro (verif du telechargement)
 } NextendoUpdate;
 

@@ -41,7 +41,7 @@ typedef enum {
     STR_HELP_S2,                // "A: install schedule   < >: change   B: quit"
 
     // --- Update banner ---
-    STR_UPDATE_BANNER,          // "MANDATORY update (v%d) - press Y to install"
+    STR_UPDATE_BANNER,          // "MANDATORY update (v%d.%d.%d) - press Y to install"
 
     // --- Confirm screen ---
     STR_CONFIRM_NEXTENDO,       // "Switch to NEXTENDO mode?"
@@ -103,7 +103,7 @@ typedef enum {
     STR_STATUS_NET_HTTP_ERR_DESC, // "Server returned an unexpected response."
     STR_STATUS_DOWNLOAD_UPDATE, // "Downloading update..."
     STR_STATUS_UPDATE_OK,       // "Update installed"
-    STR_STATUS_UPDATE_OK_DESC,  // "CLOSE and relaunch Prelude to apply v%d."
+    STR_STATUS_UPDATE_OK_DESC,  // "CLOSE and relaunch Prelude to apply v%d.%d.%d."
     STR_STATUS_UPDATE_SIZE_FAIL,    // "Download corrupted"
     STR_STATUS_UPDATE_SIZE_FAIL_DESC, // "Unexpected size. Try again."
     STR_STATUS_UPDATE_WRITE_FAIL,   // "Write failed"
@@ -113,7 +113,7 @@ typedef enum {
 
     // --- Update confirmation ---
     STR_UPD_CONFIRM_TITLE,      // "Update available"
-    STR_UPD_CONFIRM_VERSION,    // "New version: build %d"
+    STR_UPD_CONFIRM_VERSION,    // "New version: v%d.%d.%d"
     STR_UPD_CONFIRM_DESC,       // "Prelude will download and replace itself."
     STR_UPD_CONFIRM_A,          // "A: Download and install"
     STR_UPD_CONFIRM_B,          // "B: Cancel"

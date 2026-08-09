@@ -211,7 +211,9 @@ int main(int argc, char **argv) {
                 }
                 if (screen == SCREEN_PICKER && state == 0)
                     ui_draw_picker(sel, current, focus, status[0] ? status : NULL,
-                                   upd.available ? upd.latest : 0);
+                                   upd.available ? upd.maj : 0,
+                                   upd.available ? upd.min : 0,
+                                   upd.available ? upd.patch : 0);
 
                 // Toast du serveur
                 if (toastFrames > 0) {
@@ -232,7 +234,10 @@ int main(int argc, char **argv) {
                                  lang_str(sel == CHOICE_NEXTENDO
                                      ? STR_STATUS_NEXTENDO_OK
                                      : STR_STATUS_NINTENDO_OK));
-                        ui_draw_picker(sel, current, focus, status, upd.available ? upd.latest : 0);
+                        ui_draw_picker(sel, current, focus, status,
+                                       upd.available ? upd.maj : 0,
+                                       upd.available ? upd.min : 0,
+                                       upd.available ? upd.patch : 0);
                         svcSleepThread(1200000000ULL);
                         audio_exit();
                         nextendo_reboot();
@@ -280,7 +285,7 @@ int main(int argc, char **argv) {
             } else if (k & (HidNpadButton_B | HidNpadButton_Plus)) {
                 screen = SCREEN_PICKER;
             }
-            if (screen == SCREEN_UPD_CONFIRM) ui_draw_upd_confirm(upd.latest);
+            if (screen == SCREEN_UPD_CONFIRM) ui_draw_upd_confirm(upd.maj, upd.min, upd.patch);
 
         } else if (screen == SCREEN_S2_PROGRESS) {
             ui_draw_progress(lang_str(STR_STATUS_DOWNLOAD_SCHEDULE));
@@ -340,7 +345,7 @@ int main(int argc, char **argv) {
                     char updFmt[64];
                     strncpy(updFmt, lang_str(STR_STATUS_UPDATE_OK_DESC), sizeof(updFmt) - 1);
                     updFmt[sizeof(updFmt) - 1] = '\0';
-                    snprintf(rMsg, sizeof(rMsg), updFmt, upd.latest);
+                    snprintf(rMsg, sizeof(rMsg), updFmt, upd.maj, upd.min, upd.patch);
                     break;
                 }
                 case NUP_SIZE_FAIL:

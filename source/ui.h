@@ -26,8 +26,8 @@ void ui_exit(void);
 
 // Dessine l'ecran de bascule. selection = carte visee (mode NON-actuel), current = mode ACTUEL
 // (badge "ACTUEL"), focus = FOCUS_MODE (paire de cartes) ou FOCUS_S2 (barre planning), status = optionnel.
-// updVer > 0 -> bandeau discret "MàJ dispo (vN) - Y pour installer".
-void ui_draw_picker(int selection, int current, int focus, const char *status, int updVer);
+// updMaj > 0 -> bandeau discret "MàJ dispo (vN) - Y pour installer".
+void ui_draw_picker(int selection, int current, int focus, const char *status, int updMaj, int updMin, int updPatch);
 
 // Popup de CONFIRMATION avant d'appliquer + redemarrer (A = confirmer, B = annuler).
 // warnNoEmummc : console sans emuMMC (CFW sur la memoire interne). Le mode NINTENDO ne peut alors
@@ -56,6 +56,6 @@ void ui_draw_loading(const char *text);
 Framebuffer *ui_get_fb(void);
 
 // Ecran de confirmation avant mise a jour (A = installer, B = annuler).
-void ui_draw_upd_confirm(int buildVer);
+void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch);
 
 #endif // UI_H

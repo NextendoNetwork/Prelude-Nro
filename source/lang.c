@@ -60,7 +60,7 @@ static const char *s_strings[STR_COUNT][4] = {
                                    "A : installer le planning       < > : changer de choix       B : quitter" },
 
     // --- Update banner ---
-    [STR_UPDATE_BANNER]      = { "MANDATORY update (v%d)   -   press Y to install",
+    [STR_UPDATE_BANNER]      = { "MANDATORY update (v%d.%d.%d)   -   press Y to install",
                                  "Actualizacion OBLIGATORIA (v%d)   -   presiona Y para instalar",
                                  "Atualizacao OBRIGATORIA (v%d)   -   pressione Y para instalar",
                                    "Mise à jour OBLIGATOIRE (v%d)   -   appuie sur Y pour installer" },
@@ -245,7 +245,7 @@ static const char *s_strings[STR_COUNT][4] = {
                                    "Actualizacion instalada",
                                    "Atualizacao instalada",
                                    "Mise à jour installée" },
-    [STR_STATUS_UPDATE_OK_DESC]    = { "CLOSE and relaunch Prelude to apply v%d.",
+    [STR_STATUS_UPDATE_OK_DESC]    = { "CLOSE and relaunch Prelude to apply v%d.%d.%d.",
                                         "CIERRA y reinicia Prelude para aplicar v%d.",
                                         "FECHE e reinicie o Prelude para aplicar v%d.",
                                    "FERME et relance Prelude pour appliquer la v%d." },
@@ -289,7 +289,7 @@ static const char *s_strings[STR_COUNT][4] = {
                                    "Actualizacion disponible",
                                    "Atualizacao disponivel",
                                    "Mise à jour disponible" },
-    [STR_UPD_CONFIRM_VERSION]  = { "New version: build %d",
+    [STR_UPD_CONFIRM_VERSION]  = { "New version: v%d.%d.%d",
                                    "Nueva version: build %d",
                                    "Nova versao: build %d",
                                    "Nouvelle version : build %d" },

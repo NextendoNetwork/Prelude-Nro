@@ -232,17 +232,17 @@ static void drawS2Bar(u32 *b, u32 st, bool focused) {
            lang_str(STR_S2_BAR));
 }
 
-void ui_draw_picker(int selection, int current, int focus, const char *status, int updVer) {
+void ui_draw_picker(int selection, int current, int focus, const char *status, int updMaj, int updMin, int updPatch) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 bg = packColor(C_BG), sw = st / sizeof(u32);
+    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
     for (int y = 0; y < FB_H; y++)
         for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
 
     // Bandeau de mise a jour OBLIGATOIRE (si une version plus recente existe).
-    if (updVer > 0) {
+    if (updMaj > 0) {
         char m[96];
-        snprintf(m, sizeof(m), lang_str(STR_UPDATE_BANNER), updVer);
+        snprintf(m, sizeof(m), lang_str(STR_UPDATE_BANNER), updMaj, updMin, updPatch);
         drawCF(b, st, s_semi, FB_W / 2, 32, 20, packColor(C_RED), m);
     }
 
@@ -448,7 +448,7 @@ void ui_draw_lang_menu(int sel) {
 }
 
 // ------- Ecran de confirmation avant mise a jour -------
-void ui_draw_upd_confirm(int buildVer) {
+void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
     u32 sw = st / sizeof(u32), bg = packColor(C_BG);
@@ -469,7 +469,7 @@ void ui_draw_upd_confirm(int buildVer) {
     char updFmt[64];
     strncpy(updFmt, lang_str(STR_UPD_CONFIRM_VERSION), sizeof(updFmt) - 1);
     updFmt[sizeof(updFmt) - 1] = '\0';
-    snprintf(ver, sizeof(ver), updFmt, buildVer);
+    snprintf(ver, sizeof(ver), updFmt, buildMaj, buildMin, buildPatch);
     drawCF(b, st, s_semi, cx, cyy + 130, 24, acc, ver);
 
     drawCF(b, st, s_reg, cx, cyy + 180, 22, packColor(C_SUBTLE),

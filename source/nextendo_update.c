@@ -15,9 +15,9 @@
 
 // ============================================================
 //  Nextendo .nro -- auto-update via GitHub Releases API.
-//  Checks https://api.github.com/repos/Juanjo3222/Prelude-Nro/releases/latest
-//  for the latest version tag, compares with NEXTENDO_BUILD, and downloads
-//  the .nro asset if a newer version is available.
+//  Checks https://api.github.com/repos/NextendoNetwork/Prelude-Nro/releases/latest
+//  for the latest version tag, compares semver with NEXTENDO_VERSION_*,
+//  and downloads the .nro asset if a newer version is available.
 // ============================================================
 #include <switch.h>
 #include <string.h>
@@ -30,7 +30,7 @@
 
 // GitHub API for latest release
 #define GH_API_HOST  "api.github.com"
-#define GH_API_PATH  "/repos/Juanjo3222/Prelude-Nro/releases/latest"
+#define GH_API_PATH  "/repos/NextendoNetwork/Prelude-Nro/releases/latest"
 #define GH_API_PORT  443
 
 #define NRO_PATH     "sdmc:/switch/nextendo.nro"
@@ -39,24 +39,22 @@
 static char g_download_url[512] = {0};
 static long g_download_size = 0;
 
-// Parse integer from JSON field like: "tag_name":"v3.0.3" -> extract build number
+// Parse integer from JSON field like: "tag_name":"v3.0.6" -> extract maj/min/patch
 // Also handle "browser_download_url" and "size" fields
-static bool parse_github_json(const unsigned char *b, size_t len, long *build, char *url, size_t urlcap, long *size) {
+static bool parse_github_json(const unsigned char *b, size_t len, int *maj, int *min, int *patch,
+                              char *url, size_t urlcap, long *size) {
     // Extract tag_name: "tag_name":"vX.Y.Z" -> parse the version
     const char *tag_key = "\"tag_name\":\"";
     char *tp = strstr((const char*)b, tag_key);
     if (!tp) return false;
     tp += strlen(tag_key);
     // Parse vX.Y.Z — extract numbers after each dot
-    int maj = 0, min = 0, patch = 0;
     if (*tp == 'v' || *tp == 'V') tp++;
-    maj = (int)strtol(tp, &tp, 10);
+    *maj = (int)strtol(tp, &tp, 10);
     if (*tp == '.') tp++;
-    min = (int)strtol(tp, &tp, 10);
+    *min = (int)strtol(tp, &tp, 10);
     if (*tp == '.') tp++;
-    patch = (int)strtol(tp, NULL, 10);
-    // Use patch as build (or min*100+patch)
-    *build = patch > 0 ? (long)patch : (long)(min * 100);
+    *patch = (int)strtol(tp, NULL, 10);
 
     // Extract browser_download_url
     const char *url_key = "\"browser_download_url\":\"";
@@ -78,11 +76,18 @@ static bool parse_github_json(const unsigned char *b, size_t len, long *build, c
         *size = strtol(sp, NULL, 10);
     }
 
-    return *build > 0;
+    return *maj > 0;
+}
+
+// Compare two semver triplets. Returns >0 if a>b, <0 if a<b, 0 if equal.
+static int semver_cmp(int amaj, int amin, int apatch, int bmaj, int bmin, int bpatch) {
+    if (amaj != bmaj) return amaj - bmaj;
+    if (amin != bmin) return amin - bmin;
+    return apatch - bpatch;
 }
 
 NextendoUpdate nextendo_update_check(void) {
-    NextendoUpdate u = { false, 0, 0 };
+    NextendoUpdate u = { false, 0, 0, 0, 0 };
     socketInitializeDefault();
     Result rc = sslInitialize(4);
     if (R_FAILED(rc)) { socketExit(); return u; }
@@ -94,11 +99,13 @@ NextendoUpdate nextendo_update_check(void) {
     socketExit();
 
     if (body && status == 200) {
-        long build = 0; long sz = 0;
-        if (parse_github_json(body, len, &build, g_download_url, sizeof(g_download_url), &sz)) {
-            if (build > NEXTENDO_BUILD && sz > 4096) {
+        int maj = 0, min = 0, patch = 0; long sz = 0;
+        if (parse_github_json(body, len, &maj, &min, &patch, g_download_url, sizeof(g_download_url), &sz)) {
+            if (semver_cmp(maj, min, patch,
+                           NEXTENDO_VERSION_MAJOR, NEXTENDO_VERSION_MINOR, NEXTENDO_VERSION_PATCH) > 0
+                && sz > 4096) {
                 u.available = true;
-                u.latest = (int)build;
+                u.maj = maj; u.min = min; u.patch = patch;
                 u.size = sz;
                 g_download_size = sz;
             }
