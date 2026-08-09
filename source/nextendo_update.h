@@ -124,14 +124,20 @@
 // build 40 : v3.0.6. MK8 secure-server (g2b309e01-lp1) now routes to the production IP
 //           (164.132.111.120) instead of the current server, where Mario Kart has its
 //           players. Kept AFTER the g2* wildcard: "last matching line wins" in Atmosphere.
-#define NEXTENDO_BUILD 40
+// build 41 : v3.0.7. Fix auto-updater: (a) semver comparison was broken — the tag patch
+//           (e.g. 6) was compared against NEXTENDO_BUILD (40), so 6 > 40 was always false
+//           and updates were never detected. Now compares full maj.min.patch against
+//           NEXTENDO_VERSION_*; (b) GitHub API now points to the upstream repo
+//           (NextendoNetwork/Prelude-Nro) instead of the fork, which lagged a release
+//           behind. UI shows the full version (v3.0.7) in banner/confirm/status.
+#define NEXTENDO_BUILD 41
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
-// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.0.6), pas des compteurs.
+// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.0.7), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 0
-#define NEXTENDO_VERSION_PATCH 6
+#define NEXTENDO_VERSION_PATCH 7
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo
