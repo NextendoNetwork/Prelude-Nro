@@ -137,14 +137,17 @@
 //           HTTP header was received, returning status=0 which was treated as success,
 //           triggering a fake "write error" from the empty zip. Fixed in both
 //           net_https_get and net_https_get_to_file.
-#define NEXTENDO_BUILD 42
+// build 43 : v3.0.9. BCAT: download EUR zip once (0100F8F0000A2000) and install it to
+//           all regions (USA + EUR). Avoids a second HTTPS round-trip and ensures both
+//           regions always get the same schedule data regardless of per-region API state.
+#define NEXTENDO_BUILD 43
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
-// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.0.8), pas des compteurs.
+// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.0.9), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 0
-#define NEXTENDO_VERSION_PATCH 8
+#define NEXTENDO_VERSION_PATCH 9
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo

@@ -329,50 +329,51 @@ static bool copyStatic(const char *titleId, const char *romfsBase) {
 
 nextendo_bcat_result nextendo_bcat_install_s2(void) {
     g_log = fopen(LOG_PATH, "w");
-    logf_("=== Nextendo BCAT install S2 (v6 — download zip API) ===");
+    logf_("=== Nextendo BCAT install S2 (v7 — zip EUR installe pour toutes les regions) ===");
 
-    // Diagnostic DNS : resout le serveur BCAT et log l'IP pour detecter une interception DNS.
     { struct hostent *he = gethostbyname(BCAT_HOST);
       if (he && he->h_addr_list[0])
           logf_("  DNS %s -> %s", BCAT_HOST, inet_ntoa(*(struct in_addr *)he->h_addr_list[0]));
       else
           logf_("  DNS %s -> ECHEC (h_errno=%d)", BCAT_HOST, h_errno); }
 
-    const char *regionIds[] = { "01003BC0000A0000", "0100F8F0000A2000" };
+    // Download the EUR zip once and install it to every region's LayeredFS.
+    static const char EUR_ID[] = "0100F8F0000A2000";
+    static const char *regionIds[] = { "01003BC0000A0000", "0100F8F0000A2000" };
+
+    char eurLower[32];
+    snprintf(eurLower, sizeof(eurLower), "%s", EUR_ID);
+    toLowerInPlace(eurLower);
+
+    logf_("--- telechargement EUR (%s) ---", EUR_ID);
+    logf_("  GET /api/bcat/%s", eurLower);
+
+    int rc = downloadZip(eurLower);
+    if (rc == 204) {
+        logf_("  204 : aucun planning publie");
+        if (g_log) { fclose(g_log); g_log = NULL; }
+        return NB_NO_SCHEDULE;
+    }
+    if (rc != 0) {
+        logf_("  ECHEC telechargement (status=%d ssl_rc=0x%x)", rc, (unsigned)g_net_ssl_rc);
+        if (g_log) { fclose(g_log); g_log = NULL; }
+        if (rc == NET_ERR_TIMEOUT)  return NB_NET_TIMEOUT;
+        if (rc == NET_ERR_CONNECT)  return NB_NET_CONNECT;
+        if (rc == BCAT_ERR_WRITE)   return NB_WRITE_FAIL;
+        if (rc > 0)                 return NB_NET_HTTP_ERR;
+        return NB_NET_FAIL;
+    }
+
     bool anyOk = false;
-    bool anyNoSchedule = false;
-    nextendo_bcat_result netRes = NB_OK;
-
     for (int r = 0; r < 2; r++) {
-        char titleIdLower[32];
-        snprintf(titleIdLower, sizeof(titleIdLower), "%s", regionIds[r]);
-        toLowerInPlace(titleIdLower);
-
         char romfsBase[FS_MAX_PATH];
         snprintf(romfsBase, sizeof(romfsBase), LAYEREDFS_BASE, regionIds[r]);
 
         char dstBase[FS_MAX_PATH];
         snprintf(dstBase, sizeof(dstBase), "%s/DebugUnderPilot/bcat", romfsBase);
 
-        logf_("--- region %s ---", regionIds[r]);
-        logf_("  GET /api/bcat/%s", titleIdLower);
-        logf_("  dest   sdmc:  %s", dstBase);
-
-        int rc = downloadZip(titleIdLower);
-        if (rc == 204) {
-            logf_("  204 : rien de publie pour ce titre");
-            anyNoSchedule = true;
-            continue;
-        }
-        if (rc != 0) {
-            logf_("  ECHEC telechargement (status=%d ssl_rc=0x%x)", rc, (unsigned)g_net_ssl_rc);
-            if (rc == NET_ERR_TIMEOUT)      netRes = NB_NET_TIMEOUT;
-            else if (rc == NET_ERR_CONNECT) netRes = NB_NET_CONNECT;
-            else if (rc == BCAT_ERR_WRITE)  netRes = NB_WRITE_FAIL;
-            else if (rc > 0)                netRes = NB_NET_HTTP_ERR;
-            else                            netRes = NB_NET_FAIL;
-            continue;
-        }
+        logf_("--- install region %s ---", regionIds[r]);
+        logf_("  dest: %s", dstBase);
 
         char tree[FS_MAX_PATH];
         snprintf(tree, sizeof(tree), "%s/DebugUnderPilot", romfsBase);
@@ -381,24 +382,18 @@ nextendo_bcat_result nextendo_bcat_install_s2(void) {
         wipeTree(tree); rmdir(tree);
 
         bool ok = extractZip(dstBase);
-        ok = copyStatic(regionIds[r], romfsBase) && ok;
-
-        remove(ZIP_TMP);
+        ok = copyStatic(EUR_ID, romfsBase) && ok;  // EUR static files for all regions
         fsdevCommitDevice("sdmc");
 
-        if (ok) {
-            logf_("  region %s: OK", regionIds[r]);
-            anyOk = true;
-        } else {
-            logf_("  region %s: ECHEC", regionIds[r]);
-        }
+        logf_("  region %s: %s", regionIds[r], ok ? "OK" : "ECHEC extraction");
+        if (ok) anyOk = true;
     }
 
-    logf_("=== resultat: %s ===", anyOk ? "OK" : (anyNoSchedule ? "NO SCHEDULE" : "ECHEC"));
+    remove(ZIP_TMP);
+    fsdevCommitDevice("sdmc");
+
+    logf_("=== resultat: %s ===", anyOk ? "OK" : "ECHEC");
     if (g_log) { fclose(g_log); g_log = NULL; }
 
-    if (anyOk) return NB_OK;
-    if (anyNoSchedule) return NB_NO_SCHEDULE;
-    if (netRes != NB_OK) return netRes;
-    return NB_WRITE_FAIL;
+    return anyOk ? NB_OK : NB_WRITE_FAIL;
 }
