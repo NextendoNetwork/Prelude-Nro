@@ -29,6 +29,7 @@
 #include "ui.h"
 #include "ui_theme.h"
 #include "nextendo_apply.h"
+#include "nextendo_flag.h"
 #include "lang.h"
 
 #define IMG 200                 // taille des .rgba (200x200)
@@ -221,18 +222,39 @@ static void drawCard(u32 *b, u32 st, int x, bool sel, bool isCurrent, int choice
     }
 }
 
-// Barre "Splatoon 2 — Planning en ligne" sous les deux cartes de mode.
-static void drawS2Bar(u32 *b, u32 st, bool focused) {
+// Barre gauche "Splatoon 2 / BCAT" et barre droite "MK8D Flag", cote-a-cote.
+static void drawBcatBar(u32 *b, u32 st, bool focused) {
     if (focused)
-        roundedCard(b, st, S2BAR_X - 4, S2BAR_Y - 4, S2BAR_W + 8, S2BAR_H + 8, 20, packColor(C_S2));
-    roundedCard(b, st, S2BAR_X, S2BAR_Y, S2BAR_W, S2BAR_H, 16,
+        roundedCard(b, st, BAR_L_X - 4, BAR_Y - 4, BAR_W + 8, BAR_H + 8, 20, packColor(C_S2));
+    roundedCard(b, st, BAR_L_X, BAR_Y, BAR_W, BAR_H, 16,
                 packColor(focused ? C_CARD_SEL : C_CARD));
-    drawCF(b, st, s_semi, FB_W / 2, S2BAR_Y + 40, 25,
-           packColor(focused ? C_TITLE : C_SUBTLE),
-           lang_str(STR_S2_BAR));
+    drawCF(b, st, s_semi, BAR_L_X + BAR_W / 2, BAR_Y + 40, 22,
+           packColor(focused ? C_TITLE : C_SUBTLE), lang_str(STR_S2_BAR));
 }
 
-void ui_draw_picker(int selection, int current, int focus, const char *status, int updMaj, int updMin, int updPatch) {
+static void drawFlagBar(u32 *b, u32 st, bool focused, const char *currentCode) {
+    if (focused)
+        roundedCard(b, st, BAR_R_X - 4, BAR_Y - 4, BAR_W + 8, BAR_H + 8, 20, packColor(C_FLAG));
+    roundedCard(b, st, BAR_R_X, BAR_Y, BAR_W, BAR_H, 16,
+                packColor(focused ? C_CARD_SEL : C_CARD));
+
+    char label[64];
+    if (currentCode && currentCode[0]) {
+        char fmt[64];
+        // lang_str returns a "%s" format — controlled by the developer, safe.
+        strncpy(fmt, lang_str(STR_FLAG_BAR_SET), sizeof(fmt) - 1);
+        fmt[sizeof(fmt) - 1] = '\0';
+        snprintf(label, sizeof(label), fmt, currentCode);
+    } else {
+        strncpy(label, lang_str(STR_FLAG_BAR), sizeof(label) - 1);
+        label[sizeof(label) - 1] = '\0';
+    }
+    drawCF(b, st, s_semi, BAR_R_X + BAR_W / 2, BAR_Y + 40, 22,
+           packColor(focused ? C_TITLE : C_SUBTLE), label);
+}
+
+void ui_draw_picker(int selection, int current, int focus, const char *status,
+                    int updMaj, int updMin, int updPatch, const char *flagCode) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
     u32 sw = st / sizeof(u32), bg = packColor(C_BG);
@@ -261,23 +283,25 @@ void ui_draw_picker(int selection, int current, int focus, const char *status, i
     bool modeFocus = (focus == FOCUS_MODE);
     drawCard(b, st, CARD0_X, modeFocus && selection == CHOICE_NEXTENDO, current == CHOICE_NEXTENDO, CHOICE_NEXTENDO);
     drawCard(b, st, CARD1_X, modeFocus && selection == CHOICE_NINTENDO, current == CHOICE_NINTENDO, CHOICE_NINTENDO);
-    drawS2Bar(b, st, focus == FOCUS_S2);
+    drawBcatBar(b, st, focus == FOCUS_S2);
+    drawFlagBar(b, st, focus == FOCUS_FLAG, flagCode);
 
     // Ligne de contexte selon le focus.
-    int cy = S2BAR_Y + S2BAR_H + 30;   // ~594
+    int cy = BAR_Y + BAR_H + 30;
     if (focus == FOCUS_S2) {
-        drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE),
-               lang_str(STR_DESC_S2));
+        drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE), lang_str(STR_DESC_S2));
+    } else if (focus == FOCUS_FLAG) {
+        drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE), lang_str(STR_DESC_FLAG));
     } else if (selection == CHOICE_NEXTENDO) {
-        drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE),
-               lang_str(STR_DESC_NEXTENDO));
+        drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE), lang_str(STR_DESC_NEXTENDO));
     } else {
-        drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE),
-               lang_str(STR_DESC_NINTENDO));
+        drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE), lang_str(STR_DESC_NINTENDO));
     }
 
-    drawCF(b, st, s_reg, FB_W / 2, FB_H - 50, 21, packColor(C_SUBTLE),
-           focus == FOCUS_S2 ? lang_str(STR_HELP_S2) : lang_str(STR_HELP_MODE));
+    const char *helpStr = (focus == FOCUS_S2)   ? lang_str(STR_HELP_S2)
+                        : (focus == FOCUS_FLAG)  ? lang_str(STR_HELP_FLAG)
+                                                 : lang_str(STR_HELP_MODE);
+    drawCF(b, st, s_reg, FB_W / 2, FB_H - 50, 21, packColor(C_SUBTLE), helpStr);
     if (status && status[0])
         drawCF(b, st, s_semi, FB_W / 2, FB_H - 22, 23, packColor(C_BLUE), status);
 
@@ -528,6 +552,87 @@ void ui_draw_loading(const char *text) {
 
     drawCF(b, st, s_bold, FB_W / 2, FB_H / 2 - 24, 36, packColor(C_TITLE), "Prelude");
     drawCF(b, st, s_semi, FB_W / 2, FB_H / 2 + 30, 26, packColor(C_S2), text ? text : "Cargando...");
+
+    framebufferEnd(&s_fb);
+}
+
+// ------- Menu de selection de drapeau MK8D -------
+// sel = index selectionne (0-109), scroll = premier visible, currentCode = "" si aucun.
+void ui_draw_flag_menu(int sel, int scroll, const char *currentCode) {
+    u32 st;
+    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
+    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
+    for (int y = 0; y < FB_H; y++)
+        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+
+    u32 acc = packColor(C_FLAG);
+    int cw = 940, ch = 568, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
+    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
+    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
+
+    int cx = FB_W / 2;
+
+    // Title + installed state
+    drawCF(b, st, s_bold, cx, cyy + 50, 32, packColor(C_TITLE), lang_str(STR_FLAG_MENU_TITLE));
+    if (currentCode && currentCode[0]) {
+        // Show the currently installed country name
+        int idx = flag_find_index(currentCode);
+        char cur[64];
+        if (idx >= 0)
+            snprintf(cur, sizeof(cur), "%s  %s", currentCode, g_flags[idx].name);
+        else
+            snprintf(cur, sizeof(cur), "%s", currentCode);
+        drawCF(b, st, s_reg, cx, cyy + 84, 19, packColor(C_GREEN), cur);
+    } else {
+        drawCF(b, st, s_reg, cx, cyy + 84, 19, packColor(C_SUBTLE), lang_str(STR_FLAG_NONE));
+    }
+
+    // Scrollable country list
+    int rowH = 50;
+    int rowsY = cyy + 108;
+    for (int r = 0; r < FLAG_ROWS; r++) {
+        int idx = scroll + r;
+        if (idx >= FLAG_COUNT) break;
+        int ry = rowsY + r * rowH;
+        bool hovered = (idx == sel);
+        bool installed = (currentCode && currentCode[0]
+                          && strncmp(g_flags[idx].code, currentCode, 2) == 0);
+
+        if (hovered)
+            roundedCard(b, st, cxx + 16, ry - 2, cw - 32, rowH - 4, 10, packColor(C_CARD_SEL));
+
+        u32 textCol = packColor(hovered ? C_TITLE : (installed ? C_GREEN : C_SUBTLE));
+
+        // Code (bold, left)
+        drawF(b, st, s_bold, cxx + 40, ry + 32, 24, textCol, g_flags[idx].code);
+        // Name (regular, after code)
+        drawF(b, st, s_reg,  cxx + 100, ry + 32, 22, textCol, g_flags[idx].name);
+
+        // "INSTALLED" badge on the right
+        if (installed) {
+            const char *badge = lang_str(STR_FLAG_INSTALLED);
+            int bw = measureF(s_bold, 16, badge) + 20;
+            int bx = cxx + cw - 30 - bw;
+            roundedCard(b, st, bx, ry + 10, bw, 26, 10, packColor(C_GREEN));
+            drawCF(b, st, s_bold, bx + bw / 2, ry + 26, 16,
+                   packColor(COL(0x0C, 0x1A, 0x10)), badge);
+        }
+    }
+
+    // Scroll indicator (right edge)
+    if (FLAG_COUNT > FLAG_ROWS) {
+        int trackH = FLAG_ROWS * rowH;
+        int thumbH = trackH * FLAG_ROWS / FLAG_COUNT;
+        if (thumbH < 12) thumbH = 12;
+        int thumbY = rowsY + (trackH - thumbH) * scroll / (FLAG_COUNT - FLAG_ROWS);
+        fillRect(b, st, cxx + cw - 14, rowsY, 6, trackH, packColor(C_CARD_SEL));
+        fillRect(b, st, cxx + cw - 14, thumbY, 6, thumbH, packColor(C_FLAG));
+    }
+
+    // Bottom hints
+    int by = cyy + ch - 44;
+    drawCF(b, st, s_semi, cx - 160, by, 24, acc,               lang_str(STR_FLAG_A));
+    drawCF(b, st, s_semi, cx + 160, by, 24, packColor(C_SUBTLE), lang_str(STR_FLAG_B));
 
     framebufferEnd(&s_fb);
 }

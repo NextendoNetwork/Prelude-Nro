@@ -52,8 +52,20 @@ typedef struct { u8 r, g, b, a; } Color;
 #define CHOICE_NEXTENDO 0
 #define CHOICE_NINTENDO 1
 
-// Focus de l'ecran de bascule : la paire de cartes (mode) ou la barre S2.
+// Focus de l'ecran de bascule : la paire de cartes (mode), la barre S2, ou la barre flag.
 #define FOCUS_MODE 0
 #define FOCUS_S2   1
+#define FOCUS_FLAG 2
+
+// Orange MK8D pour la barre flag.
+#define C_FLAG     COL(0xFF, 0x6B, 0x00)
+
+// Deux barres cote-a-cote (S2 et flag) sur la meme ligne que l'ancienne S2BAR.
+#define BAR_W    ((S2BAR_W - 16) / 2)         // 442
+#define BAR_GAP  16
+#define BAR_L_X  S2BAR_X                       // 190 (gauche = S2/BCAT)
+#define BAR_R_X  (S2BAR_X + BAR_W + BAR_GAP)  // 648 (droite = flag)
+#define BAR_Y    S2BAR_Y
+#define BAR_H    S2BAR_H
 
 #endif // UI_THEME_H

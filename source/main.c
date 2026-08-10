@@ -34,13 +34,15 @@
 #include <stdlib.h>
 #include "nextendo_bcat.h"
 #include "nextendo_update.h"
+#include "nextendo_flag.h"
 #include "ui_theme.h"
 #include "lang.h"
 
 enum {
     SCREEN_PICKER, SCREEN_S2_INFO, SCREEN_S2_PROGRESS, SCREEN_S2_RESULT,
     SCREEN_UPD_CONFIRM, SCREEN_UPD_PROGRESS, SCREEN_UPD_RESULT,
-    SCREEN_LANG
+    SCREEN_LANG,
+    SCREEN_FLAG_MENU, SCREEN_FLAG_PROGRESS, SCREEN_FLAG_RESULT
 };
 
 // --- Log de sortie : consolide l'etat de la session dans sdmc:/prelude_exit.log ---
@@ -177,6 +179,12 @@ int main(int argc, char **argv) {
     char rTitle[64] = {0}, rMsg[192] = {0};
     bool rOk = false;
 
+    // Flag state
+    int  flagSel    = 0;
+    int  flagScroll = 0;
+    char flagCurrent[3] = {0};
+    flag_detect_current(flagCurrent);
+
     // Séquence ↑↓←→ pour basculer l'IP du serveur.
     enum { SEQ_IDLE, SEQ_UP, SEQ_UP_DOWN, SEQ_UP_DOWN_LEFT };
     int seqState = SEQ_IDLE;
@@ -244,19 +252,23 @@ int main(int argc, char **argv) {
                     if (k & HidNpadButton_Y) { screen = SCREEN_UPD_CONFIRM; }
                 } else {
                     if (k & (HidNpadButton_AnyLeft | HidNpadButton_AnyRight)) {
-                        focus = (focus == FOCUS_MODE) ? FOCUS_S2 : FOCUS_MODE;
+                        focus = (focus == FOCUS_MODE) ? FOCUS_S2
+                              : (focus == FOCUS_S2)   ? FOCUS_FLAG
+                                                      : FOCUS_MODE;
                         status[0] = 0;
                     }
                     if (k & HidNpadButton_A) {
                         if (focus == FOCUS_MODE) { nextendo_trace("17 A picker -> ecran de confirmation"); state = 1; status[0] = 0; }
-                        else { screen = SCREEN_S2_INFO; }
+                        else if (focus == FOCUS_S2)   { screen = SCREEN_S2_INFO; }
+                        else                          { screen = SCREEN_FLAG_MENU; }
                     }
                 }
                 if (screen == SCREEN_PICKER && state == 0)
                     ui_draw_picker(sel, current, focus, status[0] ? status : NULL,
                                    upd.available ? upd.maj : 0,
                                    upd.available ? upd.min : 0,
-                                   upd.available ? upd.patch : 0);
+                                   upd.available ? upd.patch : 0,
+                                   flagCurrent);
 
                 // Toast du serveur
                 if (toastFrames > 0) {
@@ -280,7 +292,8 @@ int main(int argc, char **argv) {
                         ui_draw_picker(sel, current, focus, status,
                                        upd.available ? upd.maj : 0,
                                        upd.available ? upd.min : 0,
-                                       upd.available ? upd.patch : 0);
+                                       upd.available ? upd.patch : 0,
+                                       flagCurrent);
                         svcSleepThread(1200000000ULL);
                         audio_exit();
                         nextendo_reboot();
@@ -406,9 +419,52 @@ int main(int argc, char **argv) {
             }
             screen = SCREEN_UPD_RESULT;
 
-        } else { // SCREEN_S2_RESULT / SCREEN_UPD_RESULT / SCREEN_UPD_CONFIRM (fallback)
-            if (k & (HidNpadButton_A | HidNpadButton_B | HidNpadButton_Plus))
+        } else if (screen == SCREEN_FLAG_MENU) {
+            if (k & (HidNpadButton_B | HidNpadButton_Plus)) {
                 screen = SCREEN_PICKER;
+            } else if (k & HidNpadButton_A) {
+                screen = SCREEN_FLAG_PROGRESS;
+            } else if (k & HidNpadButton_Up) {
+                if (flagSel > 0) {
+                    flagSel--;
+                    if (flagSel < flagScroll) flagScroll = flagSel;
+                }
+            } else if (k & HidNpadButton_Down) {
+                if (flagSel < FLAG_COUNT - 1) {
+                    flagSel++;
+                    if (flagSel >= flagScroll + FLAG_ROWS) flagScroll = flagSel - (FLAG_ROWS - 1);
+                }
+            }
+            if (screen == SCREEN_FLAG_MENU)
+                ui_draw_flag_menu(flagSel, flagScroll, flagCurrent);
+
+        } else if (screen == SCREEN_FLAG_PROGRESS) {
+            ui_draw_progress(lang_str(STR_STATUS_DOWNLOAD_FLAG));
+            svcSleepThread(150000000ULL);
+            socketInitializeDefault();
+            Result sslrc = sslInitialize(4);
+            int frc = R_SUCCEEDED(sslrc) ? flag_install(g_flags[flagSel].code) : -1;
+            if (R_SUCCEEDED(sslrc)) sslExit();
+            socketExit();
+            rOk = (frc == 0);
+            if (frc == 0) {
+                flagCurrent[0] = g_flags[flagSel].code[0];
+                flagCurrent[1] = g_flags[flagSel].code[1];
+                flagCurrent[2] = '\0';
+                snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_FLAG_OK));
+                snprintf(rMsg,   sizeof(rMsg),   "%s", lang_str(STR_STATUS_FLAG_OK_DESC));
+            } else if (frc == -2) {
+                snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_FLAG_WRITE_FAIL));
+                snprintf(rMsg,   sizeof(rMsg),   "%s", lang_str(STR_STATUS_FLAG_WRITE_FAIL_DESC));
+            } else {
+                snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_FLAG_NET_FAIL));
+                snprintf(rMsg,   sizeof(rMsg),   "%s", lang_str(STR_STATUS_FLAG_NET_FAIL_DESC));
+            }
+            screen = SCREEN_FLAG_RESULT;
+
+        } else { // SCREEN_S2_RESULT / SCREEN_UPD_RESULT / SCREEN_FLAG_RESULT (fallback)
+            if (k & (HidNpadButton_A | HidNpadButton_B | HidNpadButton_Plus))
+                screen = (screen == SCREEN_FLAG_RESULT) ? SCREEN_FLAG_MENU : SCREEN_PICKER;
             ui_draw_result(rTitle, rMsg, rOk);
         }
     }

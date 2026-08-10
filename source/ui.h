@@ -25,9 +25,11 @@ bool ui_init(void);
 void ui_exit(void);
 
 // Dessine l'ecran de bascule. selection = carte visee (mode NON-actuel), current = mode ACTUEL
-// (badge "ACTUEL"), focus = FOCUS_MODE (paire de cartes) ou FOCUS_S2 (barre planning), status = optionnel.
+// (badge "ACTUEL"), focus = FOCUS_MODE / FOCUS_S2 / FOCUS_FLAG, status = optionnel.
 // updMaj > 0 -> bandeau discret "MàJ dispo (vN) - Y pour installer".
-void ui_draw_picker(int selection, int current, int focus, const char *status, int updMaj, int updMin, int updPatch);
+// flagCode = code 2 lettres du drapeau installe, ou "" si aucun.
+void ui_draw_picker(int selection, int current, int focus, const char *status,
+                    int updMaj, int updMin, int updPatch, const char *flagCode);
 
 // Popup de CONFIRMATION avant d'appliquer + redemarrer (A = confirmer, B = annuler).
 // warnNoEmummc : console sans emuMMC (CFW sur la memoire interne). Le mode NINTENDO ne peut alors
@@ -57,5 +59,10 @@ Framebuffer *ui_get_fb(void);
 
 // Ecran de confirmation avant mise a jour (A = installer, B = annuler).
 void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch);
+
+// Menu de selection de drapeau MK8D (110 pays, scrollable).
+// sel = index selectionne (0-109), scroll = premier index visible,
+// currentCode = code 2 lettres installe (ou "" si aucun).
+void ui_draw_flag_menu(int sel, int scroll, const char *currentCode);
 
 #endif // UI_H

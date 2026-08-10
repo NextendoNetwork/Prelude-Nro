@@ -132,6 +132,28 @@ typedef enum {
     STR_TOAST_SERVER_DEFAULT,   // "Servidor: VPS (51.178.29.194)"
     STR_TOAST_SERVER_ALT,       // "Servidor: Local (3.135.232.168)"
 
+    // --- Flag bar (picker screen) ---
+    STR_FLAG_BAR,               // "MK8D   -   Country Flag"
+    STR_FLAG_BAR_SET,           // "MK8D   -   Flag: %s"
+    STR_DESC_FLAG,              // "Install a country flag for MK8D online play."
+    STR_HELP_FLAG,              // "A: open   < >: change   B: quit"
+
+    // --- Flag menu screen ---
+    STR_FLAG_MENU_TITLE,        // "MK8D Country Flag"
+    STR_FLAG_NONE,              // "(none installed)"
+    STR_FLAG_INSTALLED,         // "INSTALLED"
+    STR_FLAG_A,                 // "A: Install"
+    STR_FLAG_B,                 // "B: Back"
+
+    // --- Flag progress / result ---
+    STR_STATUS_DOWNLOAD_FLAG,         // "Downloading flag..."
+    STR_STATUS_FLAG_OK,               // "Flag installed"
+    STR_STATUS_FLAG_OK_DESC,          // "Restart MK8D to apply the new country."
+    STR_STATUS_FLAG_NET_FAIL,         // "Network error"
+    STR_STATUS_FLAG_NET_FAIL_DESC,    // "Could not download flag. Check connection."
+    STR_STATUS_FLAG_WRITE_FAIL,       // "Write error"
+    STR_STATUS_FLAG_WRITE_FAIL_DESC,  // "Cannot write to SD card."
+
     STR_COUNT
 } StringID;
 

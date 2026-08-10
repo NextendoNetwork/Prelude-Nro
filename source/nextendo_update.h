@@ -146,13 +146,21 @@
 //           strstr never matched, parse returned false, update was always skipped.
 //           Replaced hardcoded key+quote strings with json_str_value() which tolerates
 //           optional whitespace around ':'. Same fix for browser_download_url.
-#define NEXTENDO_BUILD 44
+// build 45 : v3.2.0. MK8D country flag installer. New button alongside BCAT in the
+//           picker (FOCUS_FLAG). Opens a scrollable menu of 110 countries sourced
+//           from alyeri/nextendo-mk8d-country-flags. Downloads the IPS ExeFS patch
+//           (title 0100152000022000, build ID FE941ED5BA14BE5D505698DA1BBF4FE7) from
+//           GitHub raw and installs it at:
+//               sdmc:/atmosphere/exefs_patches/Nextendo Country XX/
+//           Removes any previously installed flag before writing the new one. Shows
+//           the installed country code in the flag bar while in the picker.
+#define NEXTENDO_BUILD 45
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
-// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.1.0), pas des compteurs.
+// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.0), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
-#define NEXTENDO_VERSION_MINOR 1
+#define NEXTENDO_VERSION_MINOR 2
 #define NEXTENDO_VERSION_PATCH 0
 
 typedef struct {
