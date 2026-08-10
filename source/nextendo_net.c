@@ -19,6 +19,7 @@
 //  Pour HTTPS : utilise le service SSL natif de la Switch.
 // ============================================================
 #include <switch.h>
+#include <switch/runtime/devices/socket.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -32,6 +33,8 @@
 #include <stdio.h>
 
 #include "nextendo_net.h"
+
+Result g_net_ssl_rc = 0;
 
 // Taille maximale d'une reponse HTTP en memoire (4 MiB).
 // Au-dela, on considere que le serveur envoie trop de donnees (DoS ou erreur).
@@ -263,15 +266,25 @@ unsigned char *net_https_get(const char *host, const char *path,
     rc = sslContextCreateConnection(&sslCtx, &sslConn);
     if (R_FAILED(rc)) { sslContextClose(&sslCtx); close(fd); return NULL; }
 
-    int out_fd = -1;
-    rc = sslConnectionSetSocketDescriptor(&sslConn, fd, &out_fd);
-    if (R_FAILED(rc)) { sslConnectionClose(&sslConn); sslContextClose(&sslCtx); close(fd); return NULL; }
+    int out_fd = socketSslConnectionSetSocketDescriptor(&sslConn, fd);
+    if (out_fd < 0) { sslConnectionClose(&sslConn); sslContextClose(&sslCtx); close(fd); return NULL; }
 
     rc = sslConnectionSetHostName(&sslConn, host, strlen(host));
-    if (R_FAILED(rc)) { sslConnectionClose(&sslConn); sslContextClose(&sslCtx); if (out_fd >= 0) close(out_fd); return NULL; }
+    if (R_FAILED(rc)) { sslConnectionClose(&sslConn); sslContextClose(&sslCtx); if (out_fd >= 0) close(out_fd); *out_status = NET_ERR_CONNECT; return NULL; }
+
+    // La verif de certificat se fait contre le trust store du systeme, qui ne connait pas
+    // les racines recentes (ex: ISRG Root YR de Let's Encrypt, chaine de nextendo.network).
+    // On saute la verification : trafic reste chiffre, c'est notre propre serveur, et le
+    // projet desactive deja la verif CA au niveau systeme (patches Atmosphere pour le VPS).
+    sslConnectionSetOption(&sslConn, SslOptionType_SkipDefaultVerify, true);
+
+    // Force ALPN a http/1.1 : le service SSL de la Switch peut offrir h2, ce qui ferait
+    // negocier HTTP/2 avec le serveur. Le code envoie du HTTP/1.1 brut -> incompatible.
+    { static const u8 alpn[] = { 8, 'h','t','t','p','/','1','.','1' };
+      sslConnectionSetNextAlpnProto(&sslConn, alpn, sizeof(alpn)); }
 
     rc = sslConnectionDoHandshake(&sslConn, NULL, NULL, NULL, 0);
-    if (R_FAILED(rc)) { sslConnectionClose(&sslConn); sslContextClose(&sslCtx); if (out_fd >= 0) close(out_fd); return NULL; }
+    if (R_FAILED(rc)) { sslConnectionClose(&sslConn); sslContextClose(&sslCtx); if (out_fd >= 0) close(out_fd); *out_status = NET_ERR_PROTO; return NULL; }
 
     // Envoyer la requete via SSL.
     char req[768];
@@ -340,27 +353,34 @@ long net_https_get_to_file(const char *host, const char *path,
     *out_status = 0;
 
     const char *ip = resolve_host(host);
-    if (!ip) return -1;
+    if (!ip) { *out_status = NET_ERR_CONNECT; return -1; }      // DNS ECHEC
 
     int fd = tcp_connect(ip, 443);
-    if (fd < 0) return -1;
+    if (fd < 0) { *out_status = NET_ERR_CONNECT; return -1; }   // TCP ECHEC
 
     SslContext sslCtx;
     SslConnection sslConn;
     Result rc = sslCreateContext(&sslCtx, SslVersion_Auto);
-    if (R_FAILED(rc)) { close(fd); return -1; }
+    if (R_FAILED(rc)) { g_net_ssl_rc = rc; close(fd); *out_status = NET_ERR_OOM; return -1; }    // phase 1
     rc = sslContextCreateConnection(&sslCtx, &sslConn);
-    if (R_FAILED(rc)) { sslContextClose(&sslCtx); close(fd); return -1; }
+    if (R_FAILED(rc)) { g_net_ssl_rc = rc; sslContextClose(&sslCtx); close(fd); *out_status = NET_ERR_UNKNOWN; return -1; }  // phase 2
 
-    int out_fd = -1;
-    rc = sslConnectionSetSocketDescriptor(&sslConn, fd, &out_fd);
-    if (R_FAILED(rc)) { sslConnectionClose(&sslConn); sslContextClose(&sslCtx); close(fd); return -1; }
+    int out_fd = socketSslConnectionSetSocketDescriptor(&sslConn, fd);
+    if (out_fd < 0) { g_net_ssl_rc = 0xe87b; sslConnectionClose(&sslConn); sslContextClose(&sslCtx); close(fd); *out_status = NET_ERR_SOCKET; return -1; }  // phase 3
 
     rc = sslConnectionSetHostName(&sslConn, host, strlen(host));
-    if (R_FAILED(rc)) { sslConnectionClose(&sslConn); sslContextClose(&sslCtx); if (out_fd >= 0) close(out_fd); return -1; }
+    if (R_FAILED(rc)) { g_net_ssl_rc = rc; sslConnectionClose(&sslConn); sslContextClose(&sslCtx); if (out_fd >= 0) close(out_fd); *out_status = NET_ERR_CONNECT; return -1; }
+
+    // Meme raison que net_https_get : trust store du systeme trop vieux pour les racines
+    // Let's Encrypt recentes (ISRG Root YR). Serveur a nous + patches systeme deja presents.
+    sslConnectionSetOption(&sslConn, SslOptionType_SkipDefaultVerify, true);
+
+    // Meme raison que net_https_get : force ALPN http/1.1.
+    { static const u8 alpn[] = { 8, 'h','t','t','p','/','1','.','1' };
+      sslConnectionSetNextAlpnProto(&sslConn, alpn, sizeof(alpn)); }
 
     rc = sslConnectionDoHandshake(&sslConn, NULL, NULL, NULL, 0);
-    if (R_FAILED(rc)) { sslConnectionClose(&sslConn); sslContextClose(&sslCtx); if (out_fd >= 0) close(out_fd); return -1; }
+    if (R_FAILED(rc)) { g_net_ssl_rc = rc; sslConnectionClose(&sslConn); sslContextClose(&sslCtx); if (out_fd >= 0) close(out_fd); *out_status = NET_ERR_PROTO; return -1; }
 
     char req[768];
     int rl = snprintf(req, sizeof(req),
@@ -373,7 +393,7 @@ long net_https_get_to_file(const char *host, const char *path,
     if (R_FAILED(rc) || written != (u32)rl) {
         sslConnectionClose(&sslConn); sslContextClose(&sslCtx);
         if (out_fd >= 0) close(out_fd);
-        return -1;
+        *out_status = NET_ERR_PROTO; return -1;  // SSL write ECHEC apres handshake
     }
 
     // Streaming: lire via SSL, ecrire dans le fichier.
@@ -383,10 +403,12 @@ long net_https_get_to_file(const char *host, const char *path,
     int status = 0;
     int inBody = 0;
     long bodyBytes = 0;
+    long contentLen = -1;
+    bool sslError = false;
     for (;;) {
         u32 read = 0;
         rc = sslConnectionRead(&sslConn, rbuf, sizeof(rbuf), &read);
-        if (R_FAILED(rc)) break;
+        if (R_FAILED(rc)) { sslError = true; break; }
         if (read == 0) break;
         if (inBody) {
             if (fwrite(rbuf, 1, read, out) != read) {
@@ -406,6 +428,23 @@ long net_https_get_to_file(const char *host, const char *path,
         if (hlen >= 4 && hdr[hlen-4]=='\r' && hdr[hlen-3]=='\n' && hdr[hlen-2]=='\r' && hdr[hlen-1]=='\n') {
             status = parse_status(hdr, hlen);
             inBody = 1;
+            // Capture Content-Length si present (verif integrite en fin de stream).
+            for (size_t j = 0; j + 16 < hlen; j++) {
+                if ((hdr[j]=='C'||hdr[j]=='c') && (hdr[j+1]=='o'||hdr[j+1]=='O')
+                 && (hdr[j+2]=='n'||hdr[j+2]=='N') && (hdr[j+3]=='t'||hdr[j+3]=='T')
+                 && (hdr[j+4]=='e'||hdr[j+4]=='E') && (hdr[j+5]=='n'||hdr[j+5]=='N')
+                 && (hdr[j+6]=='t'||hdr[j+6]=='T') && (hdr[j+7]=='-'||hdr[j+7]=='_')
+                 && (hdr[j+8]=='L'||hdr[j+8]=='l') && (hdr[j+9]=='e'||hdr[j+9]=='E')
+                 && (hdr[j+10]=='n'||hdr[j+10]=='N') && (hdr[j+11]=='g'||hdr[j+11]=='G')
+                 && (hdr[j+12]=='t'||hdr[j+12]=='T') && (hdr[j+13]=='h'||hdr[j+13]=='H')
+                 && (hdr[j+14]==':'||hdr[j+14]==' ')) {
+                    long v = 0;
+                    for (size_t k = j + 14; k < hlen && hdr[k] != '\r'; k++)
+                        if (hdr[k] >= '0' && hdr[k] <= '9') v = v * 10 + (hdr[k] - '0');
+                    contentLen = v;
+                    break;
+                }
+            }
             if (read > i) {
                 size_t rem = read - i;
                 if (fwrite(rbuf + i, 1, rem, out) != rem) {
@@ -422,5 +461,12 @@ long net_https_get_to_file(const char *host, const char *path,
     if (out_fd >= 0) close(out_fd);
     *out_status = status;
     if (!inBody) return -1;
+    // Integrite : Content-Length est l'autorite (le serveur ferme apres le body, un
+    // erreur SSL au EOF est alors normal). Sans CL, un erreur SSL a mi-corps = tronque.
+    if (contentLen >= 0) {
+        if (bodyBytes != contentLen) return -1;
+    } else if (sslError) {
+        return -1;
+    }
     return bodyBytes;
 }

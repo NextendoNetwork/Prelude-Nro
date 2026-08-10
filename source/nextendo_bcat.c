@@ -38,6 +38,8 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 
 #include "nextendo_bcat.h"
 #include "nextendo_net.h"
@@ -204,9 +206,10 @@ static int downloadZip(const char *titleIdLower) {
     int status = 0;
     long len = net_https_get_to_file(BCAT_HOST, apiPath, f, &status);
     fclose(f);
+    fsdevCommitDevice("sdmc");  // rend le zip visible/immediat pour miniz (sinon lecture tronquee)
 
     if (status == 204) { remove(ZIP_TMP); return 204; }
-    if (status != 200) { remove(ZIP_TMP); return status > 0 ? status : NET_ERR_PROTO; }
+    if (status != 200) { remove(ZIP_TMP); return status ? status : NET_ERR_TIMEOUT; }  // status=0 = sin respuesta HTTP (fallo pre-read)
     if (len == -2)     { remove(ZIP_TMP); return BCAT_ERR_WRITE; }
     if (len < 0)       { remove(ZIP_TMP); return NET_ERR_TIMEOUT; }
     if (len < 100)     { remove(ZIP_TMP); return NET_ERR_PROTO; }
@@ -214,10 +217,46 @@ static int downloadZip(const char *titleIdLower) {
 }
 
 static bool extractZip(const char *dstBase) {
+    // Diagnostique : qu'y a-t-il reellement sur la SD ? (taille + signature PK)
+    struct stat zst;
+    if (stat(ZIP_TMP, &zst) == 0) {
+        logf_("  ZIP_TMP taille=%lld", (long long)zst.st_size);
+    } else {
+        logf_("  ZIP_TMP introuvable (stat ECHEC)");
+    }
+    {
+        FILE *dbg = fopen(ZIP_TMP, "rb");
+        if (dbg) {
+            unsigned char sig[4] = {0};
+            size_t rn = fread(sig, 1, 4, dbg);
+            logf_("  ZIP_TMP 4 premiers octets: %02x %02x %02x %02x (lus=%u)",
+                  sig[0], sig[1], sig[2], sig[3], (unsigned)rn);
+            fclose(dbg);
+        } else {
+            logf_("  ZIP_TMP fopen ECHEC (illisible)");
+        }
+    }
+
     mz_zip_archive zip;
     memset(&zip, 0, sizeof(zip));
-    if (!mz_zip_reader_init_file(&zip, ZIP_TMP, 0)) {
-        logf_("  ECHEC mz_zip_reader_init_file (zip invalide)");
+    // Lecture en MEMOIRE (pas via fopen/fsdev) : le lecteur fichier de miniz depend de
+    // fseek/ftell sur la SD (cache fsdev) qui est une source connue d'echec illisible.
+    // 191 Ko ca passe facilement en heap; on extrait puis on libere.
+    FILE *zr = fopen(ZIP_TMP, "rb");
+    if (!zr) { logf_("  ECHEC fopen zip (mem)"); return false; }
+    fseek(zr, 0, SEEK_END);
+    long zsize = ftell(zr);
+    fseek(zr, 0, SEEK_SET);
+    if (zsize < 22) { fclose(zr); logf_("  ECHEC zip trop petit (%ld)", zsize); return false; }
+    unsigned char *zbuf = (unsigned char *)malloc((size_t)zsize);
+    if (!zbuf) { fclose(zr); logf_("  ECHEC malloc zip"); return false; }
+    size_t got = fread(zbuf, 1, (size_t)zsize, zr);
+    fclose(zr);
+    if (got != (size_t)zsize) { free(zbuf); logf_("  ECHEC fread zip (%u/%ld)", (unsigned)got, zsize); return false; }
+
+    if (!mz_zip_reader_init_mem(&zip, zbuf, (size_t)zsize, 0)) {
+        free(zbuf);
+        logf_("  ECHEC mz_zip_reader_init_mem (zip invalide)");
         return false;
     }
 
@@ -262,6 +301,7 @@ static bool extractZip(const char *dstBase) {
         }
     }
     mz_zip_reader_end(&zip);
+    free(zbuf);   // apres end : miniz lit le buffer jusqu'au end
     return allOk;
 }
 
@@ -291,6 +331,13 @@ nextendo_bcat_result nextendo_bcat_install_s2(void) {
     g_log = fopen(LOG_PATH, "w");
     logf_("=== Nextendo BCAT install S2 (v6 — download zip API) ===");
 
+    // Diagnostic DNS : resout le serveur BCAT et log l'IP pour detecter une interception DNS.
+    { struct hostent *he = gethostbyname(BCAT_HOST);
+      if (he && he->h_addr_list[0])
+          logf_("  DNS %s -> %s", BCAT_HOST, inet_ntoa(*(struct in_addr *)he->h_addr_list[0]));
+      else
+          logf_("  DNS %s -> ECHEC (h_errno=%d)", BCAT_HOST, h_errno); }
+
     const char *regionIds[] = { "01003BC0000A0000", "0100F8F0000A2000" };
     bool anyOk = false;
     bool anyNoSchedule = false;
@@ -318,7 +365,7 @@ nextendo_bcat_result nextendo_bcat_install_s2(void) {
             continue;
         }
         if (rc != 0) {
-            logf_("  ECHEC telechargement (status=%d)", rc);
+            logf_("  ECHEC telechargement (status=%d ssl_rc=0x%x)", rc, (unsigned)g_net_ssl_rc);
             if (rc == NET_ERR_TIMEOUT)      netRes = NB_NET_TIMEOUT;
             else if (rc == NET_ERR_CONNECT) netRes = NB_NET_CONNECT;
             else if (rc == BCAT_ERR_WRITE)  netRes = NB_WRITE_FAIL;

@@ -130,14 +130,21 @@
 //           NEXTENDO_VERSION_*; (b) GitHub API now points to the upstream repo
 //           (NextendoNetwork/Prelude-Nro) instead of the fork, which lagged a release
 //           behind. UI shows the full version (v3.0.7) in banner/confirm/status.
-#define NEXTENDO_BUILD 41
+// build 42 : v3.0.8. Fix BCAT download (always showed "write error"). Root cause: raw
+//           sslConnectionSetSocketDescriptor (IPC) was called directly — libnx docs say
+//           "Do not use directly, use socketSslConnectionSetSocketDescriptor instead".
+//           The raw call failed with 0xe87b (module 123 / description 116) before any
+//           HTTP header was received, returning status=0 which was treated as success,
+//           triggering a fake "write error" from the empty zip. Fixed in both
+//           net_https_get and net_https_get_to_file.
+#define NEXTENDO_BUILD 42
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
-// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.0.7), pas des compteurs.
+// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.0.8), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 0
-#define NEXTENDO_VERSION_PATCH 7
+#define NEXTENDO_VERSION_PATCH 8
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo

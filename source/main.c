@@ -43,6 +43,49 @@ enum {
     SCREEN_LANG
 };
 
+// --- Log de sortie : consolide l'etat de la session dans sdmc:/prelude_exit.log ---
+// Ecrit au moment de quitter l'appli (apres la boucle principale) : resume du contexte
+// (build, boot, mode, IP, MAJ) + le resultat du dernier ecran + le contenu integral de
+// prelude_trace.txt et de nextendo_bcat.log. C'est le point d'entree unique du debug :
+// si un joueur signale "Fallo la descarga", ce fichier dit exactement ou ca a casse.
+#define EXIT_LOG_PATH "sdmc:/prelude_exit.log"
+
+static void appendFileToLog(FILE *out, const char *path) {
+    FILE *in = fopen(path, "r");
+    if (!in) { fprintf(out, "(absent)\n"); return; }
+    char line[512];
+    while (fgets(line, sizeof(line), in)) fputs(line, out);
+    fclose(in);
+}
+
+static void writeExitLog(int lastScreen, const char *lastTitle, const char *lastMsg,
+                         bool lastOk, BootType boot, bool noEmummc, int currentMode,
+                         const NextendoUpdate *upd) {
+    FILE *f = fopen(EXIT_LOG_PATH, "w");
+    if (!f) return;
+    fprintf(f, "=== Prelude exit log ===\n");
+    fprintf(f, "build : %d (v%d.%d.%d)\n", NEXTENDO_BUILD,
+            NEXTENDO_VERSION_MAJOR, NEXTENDO_VERSION_MINOR, NEXTENDO_VERSION_PATCH);
+    fprintf(f, "boot : %s\n", boot == BOOT_SYSMMC ? "SYSMMC"
+                            : boot == BOOT_EMUMMC ? "EMUMMC" : "UNKNOWN");
+    fprintf(f, "no_emummc : %d\n", noEmummc);
+    fprintf(f, "current mode : %s\n", currentMode == CHOICE_NEXTENDO ? "NEXTENDO" : "NINTENDO");
+    fprintf(f, "server ip : %s\n", g_server_ip);
+    fprintf(f, "update available : %s", upd->available ? "YES" : "no");
+    if (upd->available) fprintf(f, " (v%d.%d.%d)", upd->maj, upd->min, upd->patch);
+    fprintf(f, "\n");
+    fprintf(f, "last screen : %d\n", lastScreen);
+    fprintf(f, "last result ok : %d\n", lastOk);
+    fprintf(f, "last result title : %s\n", lastTitle ? lastTitle : "");
+    fprintf(f, "last result msg : %s\n", lastMsg ? lastMsg : "");
+    fprintf(f, "\n--- nextendo_bcat.log ---\n");
+    appendFileToLog(f, "sdmc:/nextendo_bcat.log");
+    fprintf(f, "\n--- prelude_trace.txt ---\n");
+    appendFileToLog(f, NEXTENDO_TRACE_PATH);
+    fclose(f);
+    fsdevCommitDevice("sdmc");
+}
+
 // --- Easter egg: 10% chance video on startup ---
 static void easteregg_video(void) {
     Framebuffer *fb = ui_get_fb();
@@ -371,6 +414,7 @@ int main(int argc, char **argv) {
     }
 
     ui_exit();
+    writeExitLog(screen, rTitle, rMsg, rOk, boot, noEmummc, current, &upd);
     audio_exit();
     romfsExit();
     return 0;
