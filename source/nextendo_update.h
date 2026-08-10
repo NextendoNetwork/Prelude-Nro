@@ -140,14 +140,20 @@
 // build 43 : v3.0.9. BCAT: download EUR zip once (0100F8F0000A2000) and install it to
 //           all regions (USA + EUR). Avoids a second HTTPS round-trip and ensures both
 //           regions always get the same schedule data regardless of per-region API state.
-#define NEXTENDO_BUILD 43
+// build 44 : v3.1.0. Fix auto-updater never detecting updates. Root cause: the GitHub
+//           API returns pretty-printed JSON ("tag_name": "vX.Y.Z" with a space after
+//           the colon), but parse_github_json searched for "tag_name":"" (no space) —
+//           strstr never matched, parse returned false, update was always skipped.
+//           Replaced hardcoded key+quote strings with json_str_value() which tolerates
+//           optional whitespace around ':'. Same fix for browser_download_url.
+#define NEXTENDO_BUILD 44
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
-// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.0.9), pas des compteurs.
+// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.1.0), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
-#define NEXTENDO_VERSION_MINOR 0
-#define NEXTENDO_VERSION_PATCH 9
+#define NEXTENDO_VERSION_MINOR 1
+#define NEXTENDO_VERSION_PATCH 0
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo

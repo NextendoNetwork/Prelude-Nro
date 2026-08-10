@@ -39,16 +39,28 @@
 static char g_download_url[512] = {0};
 static long g_download_size = 0;
 
-// Parse integer from JSON field like: "tag_name":"v3.0.6" -> extract maj/min/patch
-// Also handle "browser_download_url" and "size" fields
+// Find a JSON string value for a given key, tolerating optional whitespace around ':'.
+// Returns pointer to the first char inside the opening quote, or NULL.
+static char *json_str_value(const char *haystack, const char *key) {
+    char *p = strstr(haystack, key);
+    if (!p) return NULL;
+    p += strlen(key);
+    while (*p == ' ' || *p == '\t') p++;  // skip whitespace after key (before ':')
+    if (*p == ':') p++;
+    while (*p == ' ' || *p == '\t') p++;  // skip whitespace after ':'
+    if (*p != '"') return NULL;
+    return p + 1;  // point inside the opening quote
+}
+
+// Parse the GitHub releases/latest JSON response.
+// Tolerates both compact ("key":"val") and pretty-printed ("key": "val") formatting.
 static bool parse_github_json(const unsigned char *b, size_t len, int *maj, int *min, int *patch,
                               char *url, size_t urlcap, long *size) {
-    // Extract tag_name: "tag_name":"vX.Y.Z" -> parse the version
-    const char *tag_key = "\"tag_name\":\"";
-    char *tp = strstr((const char*)b, tag_key);
+    (void)len;
+
+    // tag_name -> version
+    char *tp = json_str_value((const char*)b, "\"tag_name\"");
     if (!tp) return false;
-    tp += strlen(tag_key);
-    // Parse vX.Y.Z — extract numbers after each dot
     if (*tp == 'v' || *tp == 'V') tp++;
     *maj = (int)strtol(tp, &tp, 10);
     if (*tp == '.') tp++;
@@ -56,11 +68,9 @@ static bool parse_github_json(const unsigned char *b, size_t len, int *maj, int 
     if (*tp == '.') tp++;
     *patch = (int)strtol(tp, NULL, 10);
 
-    // Extract browser_download_url
-    const char *url_key = "\"browser_download_url\":\"";
-    char *up = strstr((const char*)b, url_key);
+    // browser_download_url -> NRO asset URL
+    char *up = json_str_value((const char*)b, "\"browser_download_url\"");
     if (up) {
-        up += strlen(url_key);
         char *ue = strchr(up, '"');
         if (ue) {
             size_t ul = (size_t)(ue - up);
@@ -68,13 +78,9 @@ static bool parse_github_json(const unsigned char *b, size_t len, int *maj, int 
         }
     }
 
-    // Extract size
-    const char *size_key = "\"size\":";
-    char *sp = strstr((const char*)b, size_key);
-    if (sp) {
-        sp += strlen(size_key);
-        *size = strtol(sp, NULL, 10);
-    }
+    // size -> asset byte count (strtol skips leading spaces automatically)
+    char *sp = strstr((const char*)b, "\"size\":");
+    if (sp) { sp += 7; *size = strtol(sp, NULL, 10); }
 
     return *maj > 0;
 }
