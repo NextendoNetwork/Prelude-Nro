@@ -154,14 +154,19 @@
 //               sdmc:/atmosphere/exefs_patches/Nextendo Country XX/
 //           Removes any previously installed flag before writing the new one. Shows
 //           the installed country code in the flag bar while in the picker.
-#define NEXTENDO_BUILD 45
+// build 46 : v3.2.1. SSBU online-deluxe quickplay mod bundled in NRO romfs.
+//           Automatically installed when switching to Nextendo mode and removed when
+//           switching back to Nintendo mode. Mod files bundled at romfs:/ssbu_quickplay/
+//           and mirrored to sdmc:/atmosphere/contents/ via copyTreeRomfs / removeTreeRomfs.
+//           Title 01006A800016E000 (SSBU) + sysmodule 00FF0000A11CE0FF (online-deluxe v1.3.0).
+#define NEXTENDO_BUILD 46
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
-// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.0), pas des compteurs.
+// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.1), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 2
-#define NEXTENDO_VERSION_PATCH 0
+#define NEXTENDO_VERSION_PATCH 1
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo

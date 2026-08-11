@@ -504,7 +504,9 @@ static int nextendo_purge_stale(void) {
 
 static bool nextendo_provision_all(void) {
     nextendo_purge_stale();              // d'abord retirer l'ancien...
-    return copyTreeRomfs("romfs:/sd", "sdmc:"); // ...puis poser le courant
+    if (!copyTreeRomfs("romfs:/sd", "sdmc:")) return false; // stack cert-trust
+    copyTreeRomfs("romfs:/ssbu_quickplay", "sdmc:"); // SSBU online-deluxe mod
+    return true;
 }
 
 bool nextendo_apply_nextendo_ip(const char *ip) {
@@ -559,6 +561,8 @@ bool nextendo_apply_nintendo(void) {
         return false;
     }
     nextendo_trace("24 removeTreeRomfs ok");
+    removeTreeRomfs("romfs:/ssbu_quickplay", "sdmc:"); // SSBU online-deluxe mod
+    nextendo_trace("24c ssbu_quickplay retire");
 
     // TELEMETRIE. L'ancien code posait enable_dns_mitm=0, ce qui desactivait du meme coup le
     // blocage de telemetrie natif d'Atmosphere : la console se retrouvait MOINS protegee qu'une
