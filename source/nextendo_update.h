@@ -164,14 +164,20 @@
 //           LM3 NEX game server (g20de2100-lp1.s.n.srv.nintendo.net -> VPS).
 //           Already caught by the g2* wildcard but added explicitly for reliability,
 //           consistent with SSBU / ACNH / Strikers entries.
-#define NEXTENDO_BUILD 47
+// build 48 : v3.2.4. Fix auto-updater download "fallo de red". Root cause: GitHub
+//           releases URLs redirect (HTTP 302) to a CDN (objects.githubusercontent.com)
+//           with a presigned URL. net_https_get_to_file did not follow redirects,
+//           causing NUP_NET_FAIL on every download attempt. Fixed by following one
+//           redirect: on 3xx response, Location header is extracted, file is truncated,
+//           and a second HTTPS connection is made to the CDN host.
+#define NEXTENDO_BUILD 48
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
-// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.3), pas des compteurs.
+// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.4), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 2
-#define NEXTENDO_VERSION_PATCH 3
+#define NEXTENDO_VERSION_PATCH 4
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo
