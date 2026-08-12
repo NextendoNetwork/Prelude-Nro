@@ -188,14 +188,29 @@
 //           the sysmodule), never from config.toml, which the player may have hand-edited.
 //           The option is hidden and inert unless the mod is installed: without it,
 //           restoring 00FF0000A11CE0FF would leave an ORPHAN overclocker active at boot.
-#define NEXTENDO_BUILD 50
+// build 51 : v3.2.7. Honest wording for NINTENDO mode (reported by deejay87). The mode
+//           sets blank_prodinfo_emummc=1, so on an emuMMC console the device identity is
+//           blanked and online services cannot authenticate — no eShop, no online play.
+//           The UI nevertheless promised "normal console operation" / "back to official
+//           Nintendo servers", which never happened for those users. The picker line is
+//           now factual for both console types, and the confirm screen picks its wording
+//           from warnNoEmummc: sysNAND keeps the old text (blank_prodinfo has no effect
+//           there, so the return really is complete, and the existing risk warning still
+//           shows below it), emuMMC gets a new string stating online will not work.
+//           Also fixes a misleading comment in nextendo_apply.c: Atmosphere's default
+//           telemetry entries are COMPILED INTO the DNS.mitm sysmodule, not read from a
+//           default.txt it creates. add_defaults_to_dns_hosts=1 merges them, so blocking
+//           holds from boot even with an empty /atmosphere/hosts/. Documents why we must
+//           NOT write our own default.txt: it belongs to the user, would outlive Prelude,
+//           and our copy of the list would drift behind Atmosphere's.
+#define NEXTENDO_BUILD 51
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
 // NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 2
-#define NEXTENDO_VERSION_PATCH 6
+#define NEXTENDO_VERSION_PATCH 7
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo

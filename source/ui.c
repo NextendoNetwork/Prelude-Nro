@@ -332,8 +332,14 @@ void ui_draw_confirm(int selection, bool warnNoEmummc) {
            lang_str(nx ? STR_CONFIRM_NEXTENDO : STR_CONFIRM_NINTENDO));
     drawCF(b, st, s_semi, cx, cyy + 138, 27, acc,
            lang_str(STR_CONFIRM_REBOOT));
+    // Retour a NINTENDO : le resultat depend du type de console. En emuMMC on pose
+    // blank_prodinfo_emummc=1, donc l'identite est blanchie et les services en ligne
+    // ne marchent plus ; en sysNAND ce reglage n'a aucun effet et le retour est reel.
+    // warnNoEmummc == false  =>  la console A un emuMMC.
     drawCF(b, st, s_reg, cx, cyy + 188, 22, packColor(C_SUBTLE),
-           lang_str(nx ? STR_CONFIRM_RESTART_NEXTENDO : STR_CONFIRM_RESTART_NINTENDO));
+           lang_str(nx ? STR_CONFIRM_RESTART_NEXTENDO
+                       : (warnNoEmummc ? STR_CONFIRM_RESTART_NINTENDO
+                                       : STR_CONFIRM_RESTART_NINTENDO_EMU)));
 
     if (warn) {
         u32 wc = packColor(C_WARN);

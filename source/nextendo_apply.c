@@ -568,8 +568,14 @@ bool nextendo_apply_nintendo(void) {
     // blocage de telemetrie natif d'Atmosphere : la console se retrouvait MOINS protegee qu'une
     // install d'origine. Doc Atmosphere : "By default, atmosphere redirects resolution requests
     // for official telemetry servers, redirecting them to a loopback address." Nos hosts etant
-    // partis, DNS.mitm retombe sur /atmosphere/hosts/default.txt (qu'Atmosphere cree lui-meme
-    // avec receive-%.dg/er.srv.nintendo.net -> 127.0.0.1). On laisse donc le DNS-MITM ACTIF et
+    // partis, ce sont les entrees par defaut d'Atmosphere qui s'appliquent. Elles sont COMPILEES
+    // DANS le sysmodule DNS.mitm (receive-%.dg/er.srv.nintendo.net -> 127.0.0.1), pas lues depuis
+    // un fichier : add_defaults_to_dns_hosts=1 les fusionne avec la config hosts active, donc le
+    // blocage vaut des le boot meme si /atmosphere/hosts/ est vide. Ne PAS ecrire nous-memes un
+    // default.txt "de securite" : ce fichier appartient a l'utilisateur (beaucoup y gardent leurs
+    // propres entrees), il survivrait a la desinstallation de Prelude sur une carte censee etre
+    // propre, et notre copie de la liste deriverait derriere celle d'Atmosphere.
+    // On laisse donc le DNS-MITM ACTIF et
     // on remet add_defaults=1 : la telemetrie est bloquee, tout le reste resout normalement,
     // l'eShop continue de marcher (la raison d'etre du mode Nintendo).
     // Garde-fou : si nos hosts resistent a l'effacement, garder le DNS-MITM actif redirigerait

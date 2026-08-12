@@ -40,10 +40,13 @@ static const char *s_strings[STR_COUNT][4] = {
                                  "Servidores Nextendo: online custom, iconos, amigos. Cuenta Nextendo requerida.",
                                  "Servidores Nextendo: online custom, iconos, amigos. Conta Nextendo necessaria.",
                                    "Serveurs Nextendo : online custom, icônes, amis. Compte Nextendo requis." },
-    [STR_DESC_NINTENDO]      = { "Official Nintendo servers: normal console operation.",
-                                 "Servidores oficiales Nintendo: funcionamiento normal de la consola.",
-                                 "Servidores oficiais Nintendo: funcionamento normal do console.",
-                                   "Serveurs officiels Nintendo : fonctionnement normal de la console." },
+    // Ne promet PAS "fonctionnement normal" : en emuMMC ce mode blanchit le PRODINFO,
+    // donc les services en ligne n'authentifient plus. Le detail par type de console
+    // est dit sur l'ecran de confirmation (STR_CONFIRM_RESTART_NINTENDO*).
+    [STR_DESC_NINTENDO]      = { "Official Nintendo DNS restored. Telemetry stays blocked.",
+                                 "DNS oficial de Nintendo restaurado. La telemetria sigue bloqueada.",
+                                 "DNS oficial da Nintendo restaurado. A telemetria continua bloqueada.",
+                                   "DNS officiel Nintendo restaure. La telemetrie reste bloquee." },
     [STR_DESC_S2]            = { "Downloads the Splatoon 2 rotation schedule and installs it into the game.",
                                  "Descarga el calendario de modos de Splatoon 2 y lo instala en el juego.",
                                  "Baixa o calendario de modos do Splatoon 2 e instala no jogo.",
@@ -82,10 +85,23 @@ static const char *s_strings[STR_COUNT][4] = {
                                        "Al reiniciar: conectado a los servidores Nextendo Network.",
                                        "Ao reiniciar: conectado aos servidores Nextendo Network.",
                                    "Au redémarrage : connecté aux serveurs Nextendo Network." },
+    // Console SANS emuMMC : le PRODINFO reste le vrai (blank_prodinfo_emummc n'a aucun
+    // effet en sysNAND), donc le retour aux serveurs officiels est REEL — eShop compris.
+    // C'est aussi le cas a risque, d'ou l'avertissement STR_WARN_* affiche juste dessous.
     [STR_CONFIRM_RESTART_NINTENDO] = { "After reboot: back to official Nintendo servers.",
                                        "Al reiniciar: vuelta a los servidores oficiales Nintendo.",
                                        "Ao reiniciar: volta aos servidores oficiais Nintendo.",
                                    "Au redémarrage : retour aux serveurs officiels Nintendo." },
+    // Console AVEC emuMMC : ce mode pose blank_prodinfo_emummc=1, l'identite de l'appareil
+    // est blanchie et les services en ligne ne s'authentifient plus (ni eShop ni jeu en
+    // ligne). C'est VOULU (c'est la protection anti-ban), mais l'ancien texte promettait
+    // un "fonctionnement normal" qui n'arrivait jamais.
+    // Tenu sous ~65 caracteres : la carte fait 820 px et le texte est centre sur UNE
+    // ligne a 22 px. La plus longue chaine du design actuel en fait 63.
+    [STR_CONFIRM_RESTART_NINTENDO_EMU] = { "After reboot: official DNS. Online services will not work.",
+                                           "Al reiniciar: DNS oficial. Los servicios en linea no iran.",
+                                           "Ao reiniciar: DNS oficial. Os servicos online nao irao.",
+                                   "Au redémarrage : DNS officiel. Les services en ligne seront HS." },
     [STR_CONFIRM_CLOSE_GAMES] = { "Close any running games before confirming.",
                                   "Cierra cualquier juego abierto antes de confirmar.",
                                   "Feche qualquer jogo aberto antes de confirmar.",

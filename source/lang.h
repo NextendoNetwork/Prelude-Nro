@@ -48,7 +48,8 @@ typedef enum {
     STR_CONFIRM_NINTENDO,       // "Switch to NINTENDO mode?"
     STR_CONFIRM_REBOOT,         // "The console will REBOOT now."
     STR_CONFIRM_RESTART_NEXTENDO, // "After reboot: connected to Nextendo servers."
-    STR_CONFIRM_RESTART_NINTENDO, // "After reboot: back to official Nintendo servers."
+    STR_CONFIRM_RESTART_NINTENDO, // "After reboot: back to official Nintendo servers." (sysNAND : PRODINFO reel)
+    STR_CONFIRM_RESTART_NINTENDO_EMU, // idem emuMMC : PRODINFO blanchi -> services en ligne HS
     STR_CONFIRM_CLOSE_GAMES,    // "Close any running games before confirming."
     STR_CONFIRM_A,              // "A: Confirm"
     STR_CONFIRM_B,              // "B: Cancel"
