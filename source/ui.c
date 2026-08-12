@@ -391,6 +391,45 @@ void ui_draw_s2_info(void) {
     framebufferEnd(&s_fb);
 }
 
+// ------- SSBU mod install/remove screen -------
+void ui_draw_ssbu_mod(bool installed) {
+    u32 st;
+    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
+    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
+    for (int y = 0; y < FB_H; y++)
+        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+
+    // Smash gold accent
+    u32 acc = packColor(COL(0xFF, 0xC0, 0x00));
+    int cw = 960, ch = 380, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
+    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
+    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
+
+    int cx = FB_W / 2;
+    drawCF(b, st, s_bold, cx, cyy + 72, 36, packColor(C_TITLE), "SSBU Online Deluxe");
+    drawCF(b, st, s_reg,  cx, cyy + 128, 21, packColor(C_SUBTLE),
+           "Mod de partidas rapidas para Super Smash Bros. Ultimate.");
+    drawCF(b, st, s_reg,  cx, cyy + 158, 21, packColor(C_SUBTLE),
+           "Mejora la busqueda de rivales en linea (ssbu-online-deluxe v1.3.0).");
+
+    if (installed) {
+        drawCF(b, st, s_semi, cx, cyy + 216, 24, packColor(C_GREEN),  "Estado: Instalado");
+        drawCF(b, st, s_semi, cx, cyy + 258, 22, packColor(C_SUBTLE),
+               "El mod se aplica al reiniciar en modo Nextendo.");
+    } else {
+        drawCF(b, st, s_semi, cx, cyy + 216, 24, packColor(C_SUBTLE), "Estado: No instalado");
+        drawCF(b, st, s_semi, cx, cyy + 258, 22, packColor(C_SUBTLE),
+               "El mod se activara al reiniciar en modo Nextendo.");
+    }
+
+    int by = cyy + ch - 46;
+    const char *aLabel = installed ? "[A] Desinstalar" : "[A] Instalar";
+    drawCF(b, st, s_semi, cx - 180, by, 26, acc,                  aLabel);
+    drawCF(b, st, s_semi, cx + 180, by, 26, packColor(C_SUBTLE),  "[B] Volver");
+
+    framebufferEnd(&s_fb);
+}
+
 // ------- Ecran de progression -------
 void ui_draw_progress(const char *line) {
     u32 st;

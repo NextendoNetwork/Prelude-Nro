@@ -504,9 +504,8 @@ static int nextendo_purge_stale(void) {
 }
 
 static bool nextendo_provision_all(void) {
-    nextendo_purge_stale();              // d'abord retirer l'ancien...
-    if (!copyTreeRomfs("romfs:/sd", "sdmc:")) return false; // stack cert-trust
-    copyTreeRomfs("romfs:/ssbu_quickplay", "sdmc:"); // SSBU online-deluxe mod
+    nextendo_purge_stale();
+    if (!copyTreeRomfs("romfs:/sd", "sdmc:")) return false;
     return true;
 }
 
@@ -688,4 +687,29 @@ Result nextendo_reboot(void) {
     rc = bpcRebootSystem();              // ne revient pas si succes
     bpcExit();
     return rc;
+}
+
+// ------------------------------------------------------------------
+//  SSBU Online Deluxe mod — install / remove / detect.
+//  Le mod vit dans romfs:/ssbu_quickplay/ et se copie dans sdmc:.
+//  L'installation est optionnelle : le joueur l'active via le bouton L.
+// ------------------------------------------------------------------
+
+#define SSBU_MOD_SENTINEL \
+    "sdmc:/atmosphere/contents/01006A800016E000/romfs/skyline/plugins/libssbu_online_deluxe.nro"
+
+bool nextendo_ssbu_is_installed(void) {
+    struct stat st;
+    return stat(SSBU_MOD_SENTINEL, &st) == 0;
+}
+
+bool nextendo_ssbu_install(void) {
+    bool ok = copyTreeRomfs("romfs:/ssbu_quickplay", "sdmc:");
+    if (ok) fsdevCommitDevice("sdmc");
+    return ok;
+}
+
+void nextendo_ssbu_remove(void) {
+    removeTreeRomfs("romfs:/ssbu_quickplay", "sdmc:");
+    fsdevCommitDevice("sdmc");
 }

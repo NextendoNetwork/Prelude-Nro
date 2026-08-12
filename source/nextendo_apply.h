@@ -53,4 +53,10 @@ void nextendo_diag_network(void);
 // Redemarre la console (ne revient pas si succes ; bpcRebootSystem).
 Result nextendo_reboot(void);
 
+// SSBU Online Deluxe mod — install / remove / detect.
+// Install copie romfs:/ssbu_quickplay/ vers sdmc:. Remove fait l'inverse.
+bool nextendo_ssbu_is_installed(void);
+bool nextendo_ssbu_install(void);
+void nextendo_ssbu_remove(void);
+
 #endif // NEXTENDO_APPLY_H

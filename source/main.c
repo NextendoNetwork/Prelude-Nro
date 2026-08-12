@@ -42,7 +42,8 @@ enum {
     SCREEN_PICKER, SCREEN_S2_INFO, SCREEN_S2_PROGRESS, SCREEN_S2_RESULT,
     SCREEN_UPD_CONFIRM, SCREEN_UPD_PROGRESS, SCREEN_UPD_RESULT,
     SCREEN_LANG,
-    SCREEN_FLAG_MENU, SCREEN_FLAG_PROGRESS, SCREEN_FLAG_RESULT
+    SCREEN_FLAG_MENU, SCREEN_FLAG_PROGRESS, SCREEN_FLAG_RESULT,
+    SCREEN_SSBU_MOD, SCREEN_SSBU_RESULT
 };
 
 // --- Log de sortie : consolide l'etat de la session dans sdmc:/prelude_exit.log ---
@@ -185,6 +186,9 @@ int main(int argc, char **argv) {
     char flagCurrent[3] = {0};
     flag_detect_current(flagCurrent);
 
+    // SSBU mod state
+    bool ssbuInstalled = nextendo_ssbu_is_installed();
+
     // Séquence ↑↓←→ pour basculer l'IP du serveur.
     enum { SEQ_IDLE, SEQ_UP, SEQ_UP_DOWN, SEQ_UP_DOWN_LEFT };
     int seqState = SEQ_IDLE;
@@ -246,6 +250,7 @@ int main(int argc, char **argv) {
             if (state == 0) {
                 if (k & (HidNpadButton_B | HidNpadButton_Plus)) break;
                 if (k & HidNpadButton_R) { screen = SCREEN_LANG; langSel = g_lang; }
+                if (k & HidNpadButton_L) { screen = SCREEN_SSBU_MOD; }
                 if (upd.available) {
                     // MAJ OBLIGATOIRE : tant qu'une version plus recente existe, le homebrew
                     // est verrouille -> seules l'installation (Y) et la sortie (+/B) sont possibles.
@@ -462,9 +467,37 @@ int main(int argc, char **argv) {
             }
             screen = SCREEN_FLAG_RESULT;
 
-        } else { // SCREEN_S2_RESULT / SCREEN_UPD_RESULT / SCREEN_FLAG_RESULT (fallback)
+        } else if (screen == SCREEN_SSBU_MOD) {
+            if (k & (HidNpadButton_B | HidNpadButton_Plus)) {
+                screen = SCREEN_PICKER;
+            } else if (k & HidNpadButton_A) {
+                if (ssbuInstalled) {
+                    nextendo_ssbu_remove();
+                    ssbuInstalled = false;
+                    rOk = true;
+                    snprintf(rTitle, sizeof(rTitle), "Mod desinstalado");
+                    snprintf(rMsg,   sizeof(rMsg),   "SSBU Online Deluxe eliminado de la SD.");
+                } else {
+                    bool ok = nextendo_ssbu_install();
+                    ssbuInstalled = ok;
+                    rOk = ok;
+                    if (ok) {
+                        snprintf(rTitle, sizeof(rTitle), "Mod instalado");
+                        snprintf(rMsg,   sizeof(rMsg),   "SSBU Online Deluxe instalado. Reinicia en modo Nextendo para activarlo.");
+                    } else {
+                        snprintf(rTitle, sizeof(rTitle), "Error al instalar");
+                        snprintf(rMsg,   sizeof(rMsg),   "No se pudo copiar el mod a la SD.");
+                    }
+                }
+                screen = SCREEN_SSBU_RESULT;
+            }
+            if (screen == SCREEN_SSBU_MOD) ui_draw_ssbu_mod(ssbuInstalled);
+
+        } else { // SCREEN_S2_RESULT / SCREEN_UPD_RESULT / SCREEN_FLAG_RESULT / SCREEN_SSBU_RESULT (fallback)
             if (k & (HidNpadButton_A | HidNpadButton_B | HidNpadButton_Plus))
-                screen = (screen == SCREEN_FLAG_RESULT) ? SCREEN_FLAG_MENU : SCREEN_PICKER;
+                screen = (screen == SCREEN_FLAG_RESULT) ? SCREEN_FLAG_MENU
+                       : (screen == SCREEN_SSBU_RESULT) ? SCREEN_SSBU_MOD
+                                                        : SCREEN_PICKER;
             ui_draw_result(rTitle, rMsg, rOk);
         }
     }

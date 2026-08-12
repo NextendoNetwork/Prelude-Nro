@@ -170,14 +170,18 @@
 //           causing NUP_NET_FAIL on every download attempt. Fixed by following one
 //           redirect: on 3xx response, Location header is extracted, file is truncated,
 //           and a second HTTPS connection is made to the CDN host.
-#define NEXTENDO_BUILD 48
+// build 49 : v3.2.5. SSBU mod now optional. Removed auto-install on Nextendo mode switch.
+//           New SSBU mod menu (L button on picker): shows install status, A to install
+//           or uninstall SSBU Online Deluxe quickplay mod. Removal on Nintendo mode
+//           switch is kept for cleanup. Detection via sentinel file on SD card.
+#define NEXTENDO_BUILD 49
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
-// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.4), pas des compteurs.
+// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 2
-#define NEXTENDO_VERSION_PATCH 4
+#define NEXTENDO_VERSION_PATCH 5
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo
