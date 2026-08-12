@@ -174,14 +174,28 @@
 //           New SSBU mod menu (L button on picker): shows install status, A to install
 //           or uninstall SSBU Online Deluxe quickplay mod. Removal on Nintendo mode
 //           switch is kept for cleanup. Detection via sentinel file on SD card.
-#define NEXTENDO_BUILD 49
+// build 50 : v3.2.6. Toggle for the SSBU mod's OWN overclock (X button on the SSBU
+//           screen). The mod bundles its own overclocker — the libnx_over.nro skyline
+//           plugin plus sysmodule 00FF0000A11CE0FF, loaded at boot by flags/boot2.flag.
+//           When the player already runs Horizon OC / sys-clk, both drive the same PCV
+//           clock rails and the console FREEZES on launching Smash or seconds later
+//           (tell-tale sign: renaming the Horizon OC folder makes the mod work).
+//           Disabling writes sdmc:/ultimate/ssbu_online_deluxe/config.toml with
+//           overclocker = false, then deletes the plugin and the sysmodule — procedure
+//           confirmed by saad-script (mod author). Reversible offline: re-enabling
+//           copies both back from the NRO romfs, no download needed.
+//           State is read from flags/boot2.flag (what actually makes Atmosphere load
+//           the sysmodule), never from config.toml, which the player may have hand-edited.
+//           The option is hidden and inert unless the mod is installed: without it,
+//           restoring 00FF0000A11CE0FF would leave an ORPHAN overclocker active at boot.
+#define NEXTENDO_BUILD 50
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
 // NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 2
-#define NEXTENDO_VERSION_PATCH 5
+#define NEXTENDO_VERSION_PATCH 6
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo

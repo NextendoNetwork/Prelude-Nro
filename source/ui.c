@@ -392,7 +392,7 @@ void ui_draw_s2_info(void) {
 }
 
 // ------- SSBU mod install/remove screen -------
-void ui_draw_ssbu_mod(bool installed) {
+void ui_draw_ssbu_mod(bool installed, bool ocDisabled) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
     u32 sw = st / sizeof(u32), bg = packColor(C_BG);
@@ -400,32 +400,60 @@ void ui_draw_ssbu_mod(bool installed) {
         for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
 
     // Smash gold accent
+    // Carte agrandie (380 -> 460) : la ligne d'etat de l'overclock et sa
+    // explication tiennent sous le statut du mod sans coller aux boutons.
     u32 acc = packColor(COL(0xFF, 0xC0, 0x00));
-    int cw = 960, ch = 380, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
+    int cw = 960, ch = 460, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
     roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
     roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
 
     int cx = FB_W / 2;
-    drawCF(b, st, s_bold, cx, cyy + 72, 36, packColor(C_TITLE), "SSBU Online Deluxe");
-    drawCF(b, st, s_reg,  cx, cyy + 128, 21, packColor(C_SUBTLE),
+    drawCF(b, st, s_bold, cx, cyy + 62, 36, packColor(C_TITLE), "SSBU Online Deluxe");
+    drawCF(b, st, s_reg,  cx, cyy + 114, 21, packColor(C_SUBTLE),
            "Mod de partidas rapidas para Super Smash Bros. Ultimate.");
-    drawCF(b, st, s_reg,  cx, cyy + 158, 21, packColor(C_SUBTLE),
+    drawCF(b, st, s_reg,  cx, cyy + 144, 21, packColor(C_SUBTLE),
            "Mejora la busqueda de rivales en linea (ssbu-online-deluxe v1.3.0).");
 
     if (installed) {
-        drawCF(b, st, s_semi, cx, cyy + 216, 24, packColor(C_GREEN),  "Estado: Instalado");
-        drawCF(b, st, s_semi, cx, cyy + 258, 22, packColor(C_SUBTLE),
+        drawCF(b, st, s_semi, cx, cyy + 198, 24, packColor(C_GREEN),  "Estado: Instalado");
+        drawCF(b, st, s_semi, cx, cyy + 236, 22, packColor(C_SUBTLE),
                "El mod se aplica al reiniciar en modo Nextendo.");
     } else {
-        drawCF(b, st, s_semi, cx, cyy + 216, 24, packColor(C_SUBTLE), "Estado: No instalado");
-        drawCF(b, st, s_semi, cx, cyy + 258, 22, packColor(C_SUBTLE),
+        drawCF(b, st, s_semi, cx, cyy + 198, 24, packColor(C_SUBTLE), "Estado: No instalado");
+        drawCF(b, st, s_semi, cx, cyy + 236, 22, packColor(C_SUBTLE),
                "El mod se activara al reiniciar en modo Nextendo.");
+    }
+
+    // Overclock embarque du mod. N'a de sens QUE si le mod est installe : sans lui,
+    // reposer le sysmodule 00FF0000A11CE0FF laisserait un overclock orphelin actif
+    // au boot. L'option n'est donc ni affichee ni active tant que le mod est absent.
+    // Desactive = l'etat SAIN pour qui utilise deja Horizon OC / sys-clk, donc vert
+    // et non gris "inactif".
+    if (installed) {
+        if (ocDisabled) {
+            drawCF(b, st, s_semi, cx, cyy + 296, 23, packColor(C_GREEN),
+                   "Overclock del mod: Desactivado");
+            drawCF(b, st, s_reg,  cx, cyy + 328, 20, packColor(C_SUBTLE),
+                   "Compatible con Horizon OC / sys-clk.");
+        } else {
+            drawCF(b, st, s_semi, cx, cyy + 296, 23, acc,
+                   "Overclock del mod: Activado");
+            drawCF(b, st, s_reg,  cx, cyy + 328, 20, packColor(C_SUBTLE),
+                   "Desactivalo si usas Horizon OC / sys-clk (la consola se congela).");
+        }
     }
 
     int by = cyy + ch - 46;
     const char *aLabel = installed ? "[A] Desinstalar" : "[A] Instalar";
-    drawCF(b, st, s_semi, cx - 180, by, 26, acc,                  aLabel);
-    drawCF(b, st, s_semi, cx + 180, by, 26, packColor(C_SUBTLE),  "[B] Volver");
+    if (installed) {
+        const char *xLabel = ocDisabled ? "[X] Activar OC" : "[X] Desactivar OC";
+        drawCF(b, st, s_semi, cx - 300, by, 24, acc,                  aLabel);
+        drawCF(b, st, s_semi, cx,       by, 24, acc,                  xLabel);
+        drawCF(b, st, s_semi, cx + 300, by, 24, packColor(C_SUBTLE),  "[B] Volver");
+    } else {
+        drawCF(b, st, s_semi, cx - 180, by, 26, acc,                  aLabel);
+        drawCF(b, st, s_semi, cx + 180, by, 26, packColor(C_SUBTLE),  "[B] Volver");
+    }
 
     framebufferEnd(&s_fb);
 }

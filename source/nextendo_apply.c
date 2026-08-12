@@ -713,3 +713,65 @@ void nextendo_ssbu_remove(void) {
     removeTreeRomfs("romfs:/ssbu_quickplay", "sdmc:");
     fsdevCommitDevice("sdmc");
 }
+
+// ------------------------------------------------------------------
+//  Overclock embarque du mod SSBU — activation / desactivation.
+//
+//  Le mod embarque SON PROPRE overclock : le plugin skyline libnx_over.nro
+//  et le sysmodule 00FF0000A11CE0FF (charge au boot via flags/boot2.flag).
+//  Si le joueur utilise DEJA un gestionnaire d'horloge (Horizon OC, sys-clk),
+//  les deux pilotent les memes rails PCV et la console GELE — au lancement de
+//  Smash ou quelques secondes apres. Signe caracteristique : renommer le
+//  dossier de Horizon OC fait remarcher le mod.
+//
+//  On desactive donc l'overclock DU MOD en gardant le reste du mod intact :
+//    1. config.toml  -> overclocker = false  (le mod lit ce reglage au demarrage)
+//    2. suppression du plugin libnx_over.nro
+//    3. suppression du sysmodule 00FF0000A11CE0FF (c'est boot2.flag qui le charge)
+//  Procedure confirmee par saad-script (auteur du mod).
+//
+//  La reactivation recopie les deux depuis le romfs du .nro : aucun telechargement,
+//  donc l'operation reste reversible hors ligne.
+// ------------------------------------------------------------------
+
+#define SSBU_OC_CONFIG_DIR  "sdmc:/ultimate/ssbu_online_deluxe"
+#define SSBU_OC_CONFIG      SSBU_OC_CONFIG_DIR "/config.toml"
+#define SSBU_OC_PLUGIN      "sdmc:/atmosphere/contents/01006A800016E000/romfs/skyline/plugins/libnx_over.nro"
+#define SSBU_OC_SYSMOD      "sdmc:/atmosphere/contents/00FF0000A11CE0FF"
+#define SSBU_OC_SYSMOD_ROMFS "romfs:/ssbu_quickplay/atmosphere/contents/00FF0000A11CE0FF"
+#define SSBU_OC_PLUGIN_ROMFS "romfs:/ssbu_quickplay/atmosphere/contents/01006A800016E000/romfs/skyline/plugins/libnx_over.nro"
+
+// C'est boot2.flag qui fait charger le sysmodule au demarrage : son absence est
+// donc le marqueur fiable de "overclock du mod desactive", et pas le config.toml
+// (que le joueur peut avoir edite a la main sans toucher aux fichiers).
+bool nextendo_ssbu_oc_is_disabled(void) {
+    return !fileExists(SSBU_OC_SYSMOD "/flags/boot2.flag");
+}
+
+bool nextendo_ssbu_oc_set(bool enabled) {
+    bool ok;
+    if (enabled) {
+        if (R_FAILED(ensureDir(SSBU_OC_SYSMOD))) return false;
+        ok = copyTreeRomfs(SSBU_OC_SYSMOD_ROMFS, SSBU_OC_SYSMOD);
+        // Le plugin n'est recopie que si le mod lui-meme est installe : sinon on
+        // recreerait un fichier orphelin dans une arbo que l'utilisateur a retiree.
+        if (ok && nextendo_ssbu_is_installed())
+            ok = copyFile(SSBU_OC_PLUGIN_ROMFS, SSBU_OC_PLUGIN);
+        if (ok) {
+            ensureDir(SSBU_OC_CONFIG_DIR);
+            writeTextFile(SSBU_OC_CONFIG, "overclocker = true\n");
+        }
+    } else {
+        // Ordre volontaire : on ecrit d'abord le reglage, pour que le mod parte en
+        // mode "sans overclock" meme si une suppression echoue a mi-chemin.
+        ok = (R_SUCCEEDED(ensureDir(SSBU_OC_CONFIG_DIR)) &&
+              writeTextFile(SSBU_OC_CONFIG, "overclocker = false\n"));
+        remove(SSBU_OC_PLUGIN);
+        remove(SSBU_OC_SYSMOD "/flags/boot2.flag");
+        rmdir(SSBU_OC_SYSMOD "/flags");
+        remove(SSBU_OC_SYSMOD "/exefs.nsp");
+        rmdir(SSBU_OC_SYSMOD);
+    }
+    fsdevCommitDevice("sdmc");
+    return ok;
+}

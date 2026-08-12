@@ -188,6 +188,9 @@ int main(int argc, char **argv) {
 
     // SSBU mod state
     bool ssbuInstalled = nextendo_ssbu_is_installed();
+    // Overclock embarque du mod : lu depuis la SD (presence de boot2.flag), pas
+    // suppose — le joueur a pu le couper a un lancement precedent de Prelude.
+    bool ssbuOcDisabled = nextendo_ssbu_oc_is_disabled();
 
     // Séquence ↑↓←→ pour basculer l'IP du serveur.
     enum { SEQ_IDLE, SEQ_UP, SEQ_UP_DOWN, SEQ_UP_DOWN_LEFT };
@@ -474,6 +477,9 @@ int main(int argc, char **argv) {
                 if (ssbuInstalled) {
                     nextendo_ssbu_remove();
                     ssbuInstalled = false;
+                    // La desinstallation emporte aussi l'overclock du mod : on relit
+                    // l'etat au lieu de le supposer.
+                    ssbuOcDisabled = nextendo_ssbu_oc_is_disabled();
                     rOk = true;
                     snprintf(rTitle, sizeof(rTitle), "Mod desinstalado");
                     snprintf(rMsg,   sizeof(rMsg),   "SSBU Online Deluxe eliminado de la SD.");
@@ -481,6 +487,9 @@ int main(int argc, char **argv) {
                     bool ok = nextendo_ssbu_install();
                     ssbuInstalled = ok;
                     rOk = ok;
+                    // L'installation repose l'overclock du mod : on resynchronise
+                    // l'etat affiche, sinon l'ecran mentirait jusqu'au prochain retour.
+                    if (ok) ssbuOcDisabled = nextendo_ssbu_oc_is_disabled();
                     if (ok) {
                         snprintf(rTitle, sizeof(rTitle), "Mod instalado");
                         snprintf(rMsg,   sizeof(rMsg),   "SSBU Online Deluxe instalado. Reinicia en modo Nextendo para activarlo.");
@@ -490,8 +499,33 @@ int main(int argc, char **argv) {
                     }
                 }
                 screen = SCREEN_SSBU_RESULT;
+            } else if ((k & HidNpadButton_X) && ssbuInstalled) {
+                // Overclock embarque du mod : a couper quand le joueur utilise deja
+                // Horizon OC / sys-clk (double pilotage des rails PCV -> gel).
+                // Garde sur ssbuInstalled : sans le mod, reposer le sysmodule
+                // 00FF0000A11CE0FF laisserait un overclock orphelin actif au boot.
+                bool enable = ssbuOcDisabled;           // X bascule l'etat courant
+                bool ok = nextendo_ssbu_oc_set(enable);
+                // Etat relu depuis la SD, jamais deduit de `ok` : si une ecriture
+                // echoue a mi-chemin, l'ecran doit montrer ce qui est REELLEMENT
+                // sur la carte, pas ce qu'on esperait y mettre.
+                ssbuOcDisabled = nextendo_ssbu_oc_is_disabled();
+                rOk = ok;
+                if (ok && !enable) {
+                    snprintf(rTitle, sizeof(rTitle), "Overclock del mod desactivado");
+                    snprintf(rMsg,   sizeof(rMsg),
+                             "Ya puedes usar Horizon OC / sys-clk con el mod. Reinicia la consola.");
+                } else if (ok) {
+                    snprintf(rTitle, sizeof(rTitle), "Overclock del mod activado");
+                    snprintf(rMsg,   sizeof(rMsg),
+                             "Desactiva Horizon OC / sys-clk o la consola se congelara. Reinicia la consola.");
+                } else {
+                    snprintf(rTitle, sizeof(rTitle), "Error");
+                    snprintf(rMsg,   sizeof(rMsg),   "No se pudo cambiar el overclock del mod en la SD.");
+                }
+                screen = SCREEN_SSBU_RESULT;
             }
-            if (screen == SCREEN_SSBU_MOD) ui_draw_ssbu_mod(ssbuInstalled);
+            if (screen == SCREEN_SSBU_MOD) ui_draw_ssbu_mod(ssbuInstalled, ssbuOcDisabled);
 
         } else { // SCREEN_S2_RESULT / SCREEN_UPD_RESULT / SCREEN_FLAG_RESULT / SCREEN_SSBU_RESULT (fallback)
             if (k & (HidNpadButton_A | HidNpadButton_B | HidNpadButton_Plus))

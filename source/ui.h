@@ -65,7 +65,8 @@ void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch);
 // currentCode = code 2 lettres installe (ou "" si aucun).
 void ui_draw_flag_menu(int sel, int scroll, const char *currentCode);
 
-// SSBU Online Deluxe mod: shows current install status + [A] install/remove [B] back.
-void ui_draw_ssbu_mod(bool installed);
+// SSBU Online Deluxe mod: shows current install status + [A] install/remove,
+// [X] toggle the mod's bundled overclock (ocDisabled), [B] back.
+void ui_draw_ssbu_mod(bool installed, bool ocDisabled);
 
 #endif // UI_H

@@ -59,4 +59,11 @@ bool nextendo_ssbu_is_installed(void);
 bool nextendo_ssbu_install(void);
 void nextendo_ssbu_remove(void);
 
+// Overclock EMBARQUE du mod (plugin libnx_over.nro + sysmodule 00FF0000A11CE0FF).
+// A desactiver quand le joueur utilise deja Horizon OC / sys-clk : les deux pilotent
+// les memes rails PCV et la console gele au lancement de Smash. Reversible : la
+// reactivation recopie depuis le romfs du .nro. Prend effet au redemarrage.
+bool nextendo_ssbu_oc_is_disabled(void);
+bool nextendo_ssbu_oc_set(bool enabled);
+
 #endif // NEXTENDO_APPLY_H
