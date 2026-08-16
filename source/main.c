@@ -30,7 +30,6 @@
 #include "audio.h"
 #include "nextendo_apply.h"
 #include "nextendo_config.h"
-#include <turbojpeg.h>
 #include <stdlib.h>
 #include "nextendo_bcat.h"
 #include "nextendo_update.h"
@@ -41,9 +40,10 @@
 enum {
     SCREEN_PICKER, SCREEN_S2_INFO, SCREEN_S2_PROGRESS, SCREEN_S2_RESULT,
     SCREEN_UPD_CONFIRM, SCREEN_UPD_PROGRESS, SCREEN_UPD_RESULT,
-    SCREEN_LANG,
     SCREEN_FLAG_MENU, SCREEN_FLAG_PROGRESS, SCREEN_FLAG_RESULT,
-    SCREEN_SSBU_MOD, SCREEN_SSBU_RESULT
+    // Smash et Langue ne sont plus des ecrans : leur contenu vit dans le
+    // panneau du rail. Ne restent modaux que confirmation / progression /
+    // resultat, et la liste de 110 pays, trop longue pour un panneau.
 };
 
 // --- Log de sortie : consolide l'etat de la session dans sdmc:/prelude_exit.log ---
@@ -89,51 +89,51 @@ static void writeExitLog(int lastScreen, const char *lastTitle, const char *last
     fsdevCommitDevice("sdmc");
 }
 
-// --- Easter egg: 10% chance video on startup ---
-static void easteregg_video(void) {
-    Framebuffer *fb = ui_get_fb();
-    if (!fb) return;
-    tjhandle tj = tjInitDecompress();
-    if (!tj) return;
+// --- Travail reseau du demarrage, hors du hilo principal ---------------------
+// Verif de MAJ + diagnostic reseau + warmup DNS prenaient plusieurs secondes en
+// bloquant le rendu : trois ecrans "Cargando..." avant de voir quoi que ce soit.
+// On les deporte ici pour que le picker s'affiche tout de suite.
+//
+// SYNCHRONISATION : `done` est le seul point de rendez-vous. Le thread ecrit
+// `upd` PUIS pose done=1 ; main ne lit `upd` qu'apres avoir vu done=1. La barriere
+// est ce qui garantit que main ne voit pas un `upd` a moitie ecrit.
+//
+// Le verrou de MAJ OBLIGATOIRE en depend : tant que done vaut 0 on ne SAIT PAS
+// s'il existe une version plus recente, donc toute action qui consulte `upd` doit
+// attendre (cf. le rendez-vous sur bootPublished dans la boucle). Sans ca, un
+// joueur assez rapide appliquerait un changement de mode pendant la fenetre ou
+// upd.available est encore faux par IGNORANCE — le verrou qu on ne veut pas ouvrir.
+static struct {
+    NextendoUpdate  upd;
+    int             mode;
+    volatile bool   done;
+} s_boot;
 
-    audio_egg_play();
+static Thread s_bootThread;
 
-    int w = 320, h = 180;
-    int fbW = 1280, fbH = 720;
-    PadState pad; padInitializeDefault(&pad);
+static void bootWorker(void *arg) {
+    (void)arg;
+    NextendoUpdate u = nextendo_update_check();
+    nextendo_trace(u.available ? "14 update_check: MAJ DISPO -> homebrew verrouille (A inactif)"
+                               : "14 update_check: a jour -> A actif");
 
-    for (int loops = 0; loops < 2; loops++) {
-        for (int frame = 1; frame <= 9999; frame++) {
-            padUpdate(&pad);
-            if (padGetButtons(&pad) & (HidNpadButton_A | HidNpadButton_B | HidNpadButton_Plus))
-                goto ee_done;
-            char path[64];
-            snprintf(path, sizeof(path), "romfs:/easteregg/frame_%04d.jpg", frame);
-            FILE *f = fopen(path, "rb");
-            if (!f) break;
-            fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
-            unsigned char *jbuf = malloc(sz);
-            if (!jbuf) { fclose(f); break; }
-            fread(jbuf, 1, sz, f); fclose(f);
-
-            u32 *buf = (u32*)framebufferBegin(fb, NULL);
-            if (!buf) { free(jbuf); break; }
-            unsigned char *rgb = malloc(w * h * 3);
-            if (rgb && tjDecompress2(tj, jbuf, sz, rgb, w, 0, h, TJPF_RGB, TJFLAG_FASTDCT) == 0) {
-                for (int y = 0; y < h; y++)
-                    for (int x = 0; x < w; x++) {
-                        int si = (y * w + x) * 3;
-                        buf[y * fbW + x] = 0xFF000000 | (rgb[si] << 16) | (rgb[si+1] << 8) | rgb[si+2];
-                    }
-            }
-            free(rgb); free(jbuf);
-            framebufferEnd(fb);
-            svcSleepThread(100000000ULL / 10);
-        }
+    // Diagnostic reseau : nncs2 + etat hosts (trace pour 2123-0011 / 2810-1224).
+    socketInitializeDefault();
+    nextendo_diag_network();
+    // DNS warmup : Atmosphere's DNS-MITM is lazy-loaded (reads hosts on first DNS query).
+    // nnAccount linking fails if DNS-MITM hasn't loaded when it resolves accounts.nintendo.com.
+    // Clover's workaround (BrowseNX from DBI title override) confirms any DNS query forces init;
+    // we do it here so linking works without user workarounds.
+    if (s_boot.mode == CHOICE_NEXTENDO) {
+        struct hostent *he = gethostbyname("accounts.nintendo.com");
+        nextendo_trace(he ? "15a dns warmup: accounts.nintendo.com OK"
+                          : "15a dns warmup: accounts.nintendo.com FAIL");
     }
-ee_done:
-    audio_egg_stop();
-    tjDestroy(tj);
+    socketExit();
+
+    s_boot.upd  = u;
+    __asm__ __volatile__("dmb ish" ::: "memory");  // upd visible AVANT done
+    s_boot.done = true;
 }
 
 int main(int argc, char **argv) {
@@ -157,8 +157,6 @@ int main(int argc, char **argv) {
     remove(NEXTENDO_TRACE_PATH);
     nextendo_trace("10 main: ui_init ok");
 
-    if ((rand() % 10) == 0) easteregg_video();
-
     // Une console sans emuMMC fait tourner le CFW sur la memoire interne, donc avec son vrai
     // identifiant : blank_prodinfo_emummc, la protection posee par le mode NINTENDO, n'a alors
     // aucun effet. On previent au lieu de laisser croire a une protection inexistante.
@@ -172,10 +170,11 @@ int main(int argc, char **argv) {
 
     int  current = nextendo_current_mode();
     int  sel    = (current == CHOICE_NEXTENDO) ? CHOICE_NINTENDO : CHOICE_NEXTENDO;
-    int  focus  = FOCUS_MODE;
+    int  railSel = RAIL_MODE;   // section du rail
+    int  paneSel = 0;           // ligne du panneau
+    bool paneFocus = false;     // false = les fleches agissent sur le rail
     int  screen = SCREEN_PICKER;
     int  state  = 0;
-    int  langSel = g_lang;
     char status[160] = {0};
     char rTitle[64] = {0}, rMsg[192] = {0};
     bool rOk = false;
@@ -197,32 +196,33 @@ int main(int argc, char **argv) {
     int seqState = SEQ_IDLE;
     int toastFrames = 0;  // frames restantes d'affichage du toast
 
-    // Verif de mise a jour au demarrage (affiche d'abord le picker pour ne pas rester noir).
-    ui_draw_loading("Cargando...");
-    nextendo_trace("13 loading, antes de update_check (reseau)");
-    NextendoUpdate upd = nextendo_update_check();
-    nextendo_trace(upd.available ? "14 update_check: MAJ DISPO -> homebrew verrouille (A inactif)"
-                                 : "14 update_check: a jour -> A actif");
-    // Diagnostic reseau : nncs2 + etat hosts (trace pour 2123-0011 / 2810-1224).
-    ui_draw_loading("Verificando conexion...");
-    socketInitializeDefault();
-    nextendo_diag_network();
-    // DNS warmup : Atmosphere's DNS-MITM is lazy-loaded (reads hosts on first DNS query).
-    // nnAccount linking fails if DNS-MITM hasn't loaded when it resolves accounts.nintendo.com.
-    // Clover's workaround (BrowseNX from DBI title override) confirms any DNS query forces init;
-    // we do it here so linking works without user workarounds.
-    if (current == CHOICE_NEXTENDO) {
-        ui_draw_loading("Inicializando DNS...");
-        struct hostent *he = gethostbyname("accounts.nintendo.com");
-        nextendo_trace(he ? "15a dns warmup: accounts.nintendo.com OK"
-                          : "15a dns warmup: accounts.nintendo.com FAIL");
+    // Travail reseau du demarrage, DANS UN THREAD : il durait plusieurs secondes et
+    // bloquait le hilo principal, d'ou les trois ecrans "Cargando..." successifs.
+    // Le picker s'affiche maintenant immediatement et reste navigable pendant ce temps.
+    s_boot.mode = current;
+    nextendo_trace("13 demarrage du thread reseau (picker deja affiche)");
+    bool bootThreadOn = false;
+    if (R_SUCCEEDED(threadCreate(&s_bootThread, bootWorker, NULL, NULL, 0x20000, 0x2C, -2))
+        && R_SUCCEEDED(threadStart(&s_bootThread))) {
+        bootThreadOn = true;
+    } else {
+        // Pas de thread : on retombe sur l'ancien comportement synchrone plutot que
+        // de laisser upd non renseigne — le verrou de MAJ obligatoire en depend.
+        nextendo_trace("13b threadCreate KO -> repli synchrone");
+        bootWorker(NULL);
     }
-    socketExit();
+    NextendoUpdate upd = (NextendoUpdate){0};
+    bool bootPublished = false;   // upd publie une seule fois (le succes d'une MAJ remet available=0)
     nextendo_trace("15 entree dans la boucle principale");
 
     bool tracedLoop = false, tracedConfirm = false;
     while (appletMainLoop()) {
         consoleUpdate(NULL);
+        // Publication passive : des que le thread reseau a fini, le bandeau de MAJ
+        // apparait de lui-meme, sans que l'utilisateur ait a toucher quoi que ce soit.
+        // One-shot (bootPublished) : une MAJ reussie remet upd.available a 0 et il ne
+        // faut pas que la copie ressuscite le bandeau a la frame suivante.
+        if (!bootPublished && s_boot.done) { upd = s_boot.upd; bootPublished = true; }
         padUpdate(&pad);
         u64 k = padGetButtonsDown(&pad);
         // Une seule fois : prouve que la boucle tourne ET que l'entree remonte (si A ne fait rien
@@ -251,32 +251,99 @@ int main(int argc, char **argv) {
 
         if (screen == SCREEN_PICKER) {
             if (state == 0) {
-                if (k & (HidNpadButton_B | HidNpadButton_Plus)) break;
-                if (k & HidNpadButton_R) { screen = SCREEN_LANG; langSel = g_lang; }
-                if (k & HidNpadButton_L) { screen = SCREEN_SSBU_MOD; }
+                // + quitte toujours. B ne quitte que depuis le rail : dans le
+                // panneau il sert a revenir en arriere, et quitter l app sur un
+                // retour serait le piege classique de ce modele.
+                if (k & HidNpadButton_Plus) break;
+                if ((k & HidNpadButton_B) && !paneFocus) break;
+
+                // Rendez-vous avec le thread reseau. La navigation (haut/bas/gauche/
+                // droite, R, L) n'attend RIEN — c'est ce qui fait disparaitre l'ecran
+                // de chargement. Seule une touche qui va CONSULTER upd attend, parce
+                // que tant que done vaut 0 on ignore s'il existe une MAJ obligatoire.
+                // En pratique le thread a fini bien avant qu'on arrive ici : l'attente
+                // ne se voit que si le reseau rame, et la elle est justifiee.
+                if (k && !bootPublished) {
+                    ui_draw_loading("Verificando actualizacion...");
+                    while (!s_boot.done) svcSleepThread(10000000ULL);  // 10 ms
+                    upd = s_boot.upd;
+                    bootPublished = true;
+                }
+
                 if (upd.available) {
                     // MAJ OBLIGATOIRE : tant qu'une version plus recente existe, le homebrew
                     // est verrouille -> seules l'installation (Y) et la sortie (+/B) sont possibles.
                     if (k & HidNpadButton_Y) { screen = SCREEN_UPD_CONFIRM; }
-                } else {
-                    if (k & (HidNpadButton_AnyLeft | HidNpadButton_AnyRight)) {
-                        focus = (focus == FOCUS_MODE) ? FOCUS_S2
-                              : (focus == FOCUS_S2)   ? FOCUS_FLAG
-                                                      : FOCUS_MODE;
-                        status[0] = 0;
+                } else if (!paneFocus) {
+                    // --- Colonne de gauche : on parcourt les sections ---
+                    if (k & HidNpadButton_AnyUp)   { railSel = (railSel + RAIL_N - 1) % RAIL_N; status[0] = 0; }
+                    if (k & HidNpadButton_AnyDown) { railSel = (railSel + 1) % RAIL_N;          status[0] = 0; }
+                    // Droite ET A entrent dans le panneau : la fleche parce que c'est
+                    // le geste attendu entre deux colonnes, A parce que c'est le bouton
+                    // de validation et qu'on ne veut pas qu'il ne fasse rien ici.
+                    if (k & (HidNpadButton_AnyRight | HidNpadButton_A)) {
+                        paneFocus = true;
+                        paneSel = 0;
+                        // Sur MODE, on entre sur le mode NON courant : c'est celui vers
+                        // lequel on peut basculer, donc le choix par defaut utile.
+                        if (railSel == RAIL_MODE)
+                            paneSel = (current == CHOICE_NEXTENDO) ? CHOICE_NINTENDO : CHOICE_NEXTENDO;
                     }
+                } else {
+                    // --- Colonne de droite : on parcourt les lignes de la section ---
+                    int rows = ui_pane_rows(railSel, ssbuInstalled);
+                    if (k & HidNpadButton_AnyUp)   paneSel = (paneSel + rows - 1) % rows;
+                    if (k & HidNpadButton_AnyDown) paneSel = (paneSel + 1) % rows;
+                    if (k & (HidNpadButton_AnyLeft | HidNpadButton_B)) paneFocus = false;
+
                     if (k & HidNpadButton_A) {
-                        if (focus == FOCUS_MODE) { nextendo_trace("17 A picker -> ecran de confirmation"); state = 1; status[0] = 0; }
-                        else if (focus == FOCUS_S2)   { screen = SCREEN_S2_INFO; }
-                        else                          { screen = SCREEN_FLAG_MENU; }
+                        switch (railSel) {
+                        case RAIL_MODE:
+                            // paneSel EST le mode choisi : avant, sel etait fige au
+                            // demarrage et l'utilisateur ne choisissait rien.
+                            sel = paneSel;
+                            nextendo_trace("17 A picker -> ecran de confirmation");
+                            state = 1; status[0] = 0;
+                            break;
+                        case RAIL_S2:   screen = SCREEN_S2_INFO;   break;
+                        case RAIL_FLAG: screen = SCREEN_FLAG_MENU; break;
+                        case RAIL_LANG:
+                            if (paneSel != (int)g_lang) { g_lang = (Lang)paneSel; lang_save(); }
+                            break;
+                        case RAIL_SSBU:
+                            if (paneSel == 0) {
+                                if (ssbuInstalled) {
+                                    nextendo_ssbu_remove();
+                                    ssbuInstalled = false;
+                                    ssbuOcDisabled = nextendo_ssbu_oc_is_disabled();
+                                    snprintf(status, sizeof(status), "%s", lang_str(STR_SSBU_NOT_INSTALLED));
+                                } else {
+                                    ssbuInstalled = nextendo_ssbu_install();
+                                    if (ssbuInstalled) ssbuOcDisabled = nextendo_ssbu_oc_is_disabled();
+                                    snprintf(status, sizeof(status), "%s",
+                                             lang_str(ssbuInstalled ? STR_SSBU_INSTALLED
+                                                                    : STR_STATUS_SD_ERROR));
+                                }
+                                // Le nombre de lignes depend de ssbuInstalled : sans ce
+                                // reborne, paneSel peut pointer une ligne disparue.
+                                int r = ui_pane_rows(railSel, ssbuInstalled);
+                                if (paneSel >= r) paneSel = r - 1;
+                            } else {
+                                bool enable = ssbuOcDisabled;
+                                nextendo_ssbu_oc_set(enable);
+                                ssbuOcDisabled = nextendo_ssbu_oc_is_disabled();
+                            }
+                            break;
+                        }
                     }
                 }
                 if (screen == SCREEN_PICKER && state == 0)
-                    ui_draw_picker(sel, current, focus, status[0] ? status : NULL,
+                    ui_draw_picker(railSel, paneSel, paneFocus, current,
+                                   status[0] ? status : NULL,
                                    upd.available ? upd.maj : 0,
                                    upd.available ? upd.min : 0,
                                    upd.available ? upd.patch : 0,
-                                   flagCurrent);
+                                   flagCurrent, ssbuInstalled, ssbuOcDisabled);
 
                 // Toast du serveur
                 if (toastFrames > 0) {
@@ -297,11 +364,11 @@ int main(int argc, char **argv) {
                                  lang_str(sel == CHOICE_NEXTENDO
                                      ? STR_STATUS_NEXTENDO_OK
                                      : STR_STATUS_NINTENDO_OK));
-                        ui_draw_picker(sel, current, focus, status,
+                        ui_draw_picker(railSel, paneSel, paneFocus, current, status,
                                        upd.available ? upd.maj : 0,
                                        upd.available ? upd.min : 0,
                                        upd.available ? upd.patch : 0,
-                                       flagCurrent);
+                                       flagCurrent, ssbuInstalled, ssbuOcDisabled);
                         svcSleepThread(1200000000ULL);
                         audio_exit();
                         nextendo_reboot();
@@ -326,22 +393,6 @@ int main(int argc, char **argv) {
                 screen = SCREEN_S2_PROGRESS;
             }
             if (screen == SCREEN_S2_INFO) ui_draw_s2_info();
-
-        } else if (screen == SCREEN_LANG) {
-            if (k & HidNpadButton_B) {
-                screen = SCREEN_PICKER;
-            } else if (k & HidNpadButton_A) {
-                if (langSel != g_lang) {
-                    g_lang = langSel;
-                    lang_save();
-                }
-                screen = SCREEN_PICKER;
-            } else if (k & HidNpadButton_Up) {
-                if (langSel > 0) langSel--;
-            } else if (k & HidNpadButton_Down) {
-                if (langSel < 3) langSel++;
-            }
-            if (screen == SCREEN_LANG) ui_draw_lang_menu(langSel);
 
         } else if (screen == SCREEN_UPD_CONFIRM) {
             if (k & HidNpadButton_A) {
@@ -470,73 +521,19 @@ int main(int argc, char **argv) {
             }
             screen = SCREEN_FLAG_RESULT;
 
-        } else if (screen == SCREEN_SSBU_MOD) {
-            if (k & (HidNpadButton_B | HidNpadButton_Plus)) {
-                screen = SCREEN_PICKER;
-            } else if (k & HidNpadButton_A) {
-                if (ssbuInstalled) {
-                    nextendo_ssbu_remove();
-                    ssbuInstalled = false;
-                    // La desinstallation emporte aussi l'overclock du mod : on relit
-                    // l'etat au lieu de le supposer.
-                    ssbuOcDisabled = nextendo_ssbu_oc_is_disabled();
-                    rOk = true;
-                    snprintf(rTitle, sizeof(rTitle), "Mod desinstalado");
-                    snprintf(rMsg,   sizeof(rMsg),   "SSBU Online Deluxe eliminado de la SD.");
-                } else {
-                    bool ok = nextendo_ssbu_install();
-                    ssbuInstalled = ok;
-                    rOk = ok;
-                    // L'installation repose l'overclock du mod : on resynchronise
-                    // l'etat affiche, sinon l'ecran mentirait jusqu'au prochain retour.
-                    if (ok) ssbuOcDisabled = nextendo_ssbu_oc_is_disabled();
-                    if (ok) {
-                        snprintf(rTitle, sizeof(rTitle), "Mod instalado");
-                        snprintf(rMsg,   sizeof(rMsg),   "SSBU Online Deluxe instalado. Reinicia en modo Nextendo para activarlo.");
-                    } else {
-                        snprintf(rTitle, sizeof(rTitle), "Error al instalar");
-                        snprintf(rMsg,   sizeof(rMsg),   "No se pudo copiar el mod a la SD.");
-                    }
-                }
-                screen = SCREEN_SSBU_RESULT;
-            } else if ((k & HidNpadButton_X) && ssbuInstalled) {
-                // Overclock embarque du mod : a couper quand le joueur utilise deja
-                // Horizon OC / sys-clk (double pilotage des rails PCV -> gel).
-                // Garde sur ssbuInstalled : sans le mod, reposer le sysmodule
-                // 00FF0000A11CE0FF laisserait un overclock orphelin actif au boot.
-                bool enable = ssbuOcDisabled;           // X bascule l'etat courant
-                bool ok = nextendo_ssbu_oc_set(enable);
-                // Etat relu depuis la SD, jamais deduit de `ok` : si une ecriture
-                // echoue a mi-chemin, l'ecran doit montrer ce qui est REELLEMENT
-                // sur la carte, pas ce qu'on esperait y mettre.
-                ssbuOcDisabled = nextendo_ssbu_oc_is_disabled();
-                rOk = ok;
-                if (ok && !enable) {
-                    snprintf(rTitle, sizeof(rTitle), "Overclock del mod desactivado");
-                    snprintf(rMsg,   sizeof(rMsg),
-                             "Ya puedes usar Horizon OC / sys-clk con el mod. Reinicia la consola.");
-                } else if (ok) {
-                    snprintf(rTitle, sizeof(rTitle), "Overclock del mod activado");
-                    snprintf(rMsg,   sizeof(rMsg),
-                             "Desactiva Horizon OC / sys-clk o la consola se congelara. Reinicia la consola.");
-                } else {
-                    snprintf(rTitle, sizeof(rTitle), "Error");
-                    snprintf(rMsg,   sizeof(rMsg),   "No se pudo cambiar el overclock del mod en la SD.");
-                }
-                screen = SCREEN_SSBU_RESULT;
-            }
-            if (screen == SCREEN_SSBU_MOD) ui_draw_ssbu_mod(ssbuInstalled, ssbuOcDisabled);
-
         } else { // SCREEN_S2_RESULT / SCREEN_UPD_RESULT / SCREEN_FLAG_RESULT / SCREEN_SSBU_RESULT (fallback)
             if (k & (HidNpadButton_A | HidNpadButton_B | HidNpadButton_Plus))
                 screen = (screen == SCREEN_FLAG_RESULT) ? SCREEN_FLAG_MENU
-                       : (screen == SCREEN_SSBU_RESULT) ? SCREEN_SSBU_MOD
                                                         : SCREEN_PICKER;
             ui_draw_result(rTitle, rMsg, rOk);
         }
     }
 
     ui_exit();
+    // Le thread reseau doit etre fini avant qu'on parte : il ecrit s_boot et trace.
+    if (bootThreadOn) { while (!s_boot.done) svcSleepThread(10000000ULL);
+                        threadWaitForExit(&s_bootThread); threadClose(&s_bootThread); }
+    if (!bootPublished && s_boot.done) upd = s_boot.upd;   // le log doit voir le vrai etat
     writeExitLog(screen, rTitle, rMsg, rOk, boot, noEmummc, current, &upd);
     audio_exit();
     romfsExit();

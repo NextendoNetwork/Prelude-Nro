@@ -203,14 +203,58 @@
 //           holds from boot even with an empty /atmosphere/hosts/. Documents why we must
 //           NOT write our own default.txt: it belongs to the user, would outlive Prelude,
 //           and our copy of the list would drift behind Atmosphere's.
-#define NEXTENDO_BUILD 51
+// build 52 : v3.3.0. Three changes: the UI adopts the console's own look, the .nro
+//           loses a third of its size, and Splatoon 3 becomes reachable.
+//
+//           (0) UI RETHEMED. The palette now follows the system (HOME menu / Settings)
+//           instead of a bespoke identity, and it tracks the console's light/dark
+//           setting — so the colours became theme_* accessors rather than compile-time
+//           constants, since a constant cannot change at runtime. The two brand colours
+//           (Nextendo blue, Nintendo red) are deliberately left alone: they are the
+//           project's identity and they hold on either background. Rationale: Prelude
+//           IS a settings app, so it should use the conventions its users already know.
+//
+//           (a) AUDIO REWRITTEN, SDL2 DROPPED. Background music moves from SDL2_mixer
+//           to mpg123 + audout directly. The old link line, `pkg-config --static
+//           --libs SDL2_mixer`, pulled in libSDL2 (4.4 MB) and with it Mesa —
+//           libEGL (5.1 MB) plus libglapi — because SDL2 declares a video subsystem,
+//           plus libmodplug (0.9 MB) for a tracker format we never use. Prelude draws
+//           straight to the framebuffer and has never issued an OpenGL call: all of
+//           that existed only to decode one MP3, and mpg123 (0.24 MB) is the only
+//           part that was doing the work.
+//           The easter egg went too (audio.mp3 + 671 JPEG frames, 2.6 MB).
+//           Measured: .nro 25.97 MB -> 17.01 MB, code section 8.47 MB -> 2.13 MB
+//           (-75 %), romfs 17.50 MB -> 14.88 MB.
+//           This matters beyond disk: hbloader loads the whole .nro into RAM, and in
+//           applet mode that headroom is what the updater needs to buffer a download.
+//
+//           (b) SPLATOON 3 / NPLN HOSTS. Splatoon 3 does NOT use NEX — it speaks
+//           NPLN (gRPC over HTTP/2), so it has no g2*.s.n secure server and none of the
+//           existing per-game entries reach it. Hosts taken from the traefik HostSNI
+//           rules on the live npln container, not guessed:
+//             t-dce9377b-lp1.lp1.t.npln.srv.nintendo.net
+//             t-adf89f68-lp1.lp1.t.npln.srv.nintendo.net
+//             gw.hac.lp1.vermillion.srv.nintendo.net
+//             val.hac.lp1.penne.srv.nintendo.net
+//             fro-3.hac.lp1.penne.srv.nintendo.net
+//             dragons.hac.lp1.dragons.nintendo.net
+//           The first five end in srv.nintendo.net and were already caught by the
+//           *srv wildcard; they are listed explicitly for the same reason as the NEX
+//           games (mid-label * is ignored on some Atmosphere builds).
+//           dragons is the one that was genuinely UNREACHABLE: it ends in .nintendo.net,
+//           not srv.nintendo.net, and there is no generic *.nintendo.net (that was
+//           removed in v3.0.2 because it was too broad). Without this line it resolved
+//           to the real Nintendo.
+//           Note: an existing entry has val.hac.penne.srv.nintendo.net without the lp1
+//           label; the live route is val.hac.lp1.penne.srv.nintendo.net. Both are kept.
+#define NEXTENDO_BUILD 52
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
 // NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
-#define NEXTENDO_VERSION_MINOR 2
-#define NEXTENDO_VERSION_PATCH 7
+#define NEXTENDO_VERSION_MINOR 3
+#define NEXTENDO_VERSION_PATCH 0
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo

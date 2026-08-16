@@ -28,8 +28,16 @@ void ui_exit(void);
 // (badge "ACTUEL"), focus = FOCUS_MODE / FOCUS_S2 / FOCUS_FLAG, status = optionnel.
 // updMaj > 0 -> bandeau discret "MàJ dispo (vN) - Y pour installer".
 // flagCode = code 2 lettres du drapeau installe, ou "" si aucun.
-void ui_draw_picker(int selection, int current, int focus, const char *status,
-                    int updMaj, int updMin, int updPatch, const char *flagCode);
+// Ecran principal, navigation a deux colonnes.
+//   railSel      section courante (RAIL_*), paneSel ligne courante du panneau
+//   paneFocused  true = les fleches agissent sur le panneau, false = sur le rail
+// Le curseur n'est dessine que du cote qui a le focus.
+void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
+                    const char *status, int updMaj, int updMin, int updPatch,
+                    const char *flagCode, bool ssbuInstalled, bool ssbuOcDisabled);
+
+// Nombre de lignes du panneau d'une section — main.c borne le focus avec ca.
+int ui_pane_rows(int railSel, bool ssbuInstalled);
 
 // Popup de CONFIRMATION avant d'appliquer + redemarrer (A = confirmer, B = annuler).
 // warnNoEmummc : console sans emuMMC (CFW sur la memoire interne). Le mode NINTENDO ne peut alors
@@ -46,16 +54,11 @@ void ui_draw_progress(const char *line);
 // Ecran de resultat (succes vert / erreur rouge). A/B = retour.
 void ui_draw_result(const char *title, const char *msg, bool ok);
 
-// Menu de sélection de langue (R depuis le picker). sel = ligne survolée (0-2).
-void ui_draw_lang_menu(int sel);
-
 // Toast semi-transparent en bas de l'écran (texte centré).
 void ui_draw_toast(const char *text);
 
 // Ecran de chargement (titre "Prelude" + texte centree).
 void ui_draw_loading(const char *text);
-
-Framebuffer *ui_get_fb(void);
 
 // Ecran de confirmation avant mise a jour (A = installer, B = annuler).
 void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch);
@@ -64,9 +67,5 @@ void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch);
 // sel = index selectionne (0-109), scroll = premier index visible,
 // currentCode = code 2 lettres installe (ou "" si aucun).
 void ui_draw_flag_menu(int sel, int scroll, const char *currentCode);
-
-// SSBU Online Deluxe mod: shows current install status + [A] install/remove,
-// [X] toggle the mod's bundled overclock (ocDisabled), [B] back.
-void ui_draw_ssbu_mod(bool installed, bool ocDisabled);
 
 #endif // UI_H

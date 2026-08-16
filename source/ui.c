@@ -31,18 +31,38 @@
 #include "nextendo_apply.h"
 #include "nextendo_flag.h"
 #include "lang.h"
+#include "nextendo_update.h"   // NEXTENDO_VERSION_* pour le contexte de l en-tete
 
 #define IMG 200                 // taille des .rgba (200x200)
 #define IMG_BYTES (IMG * IMG * 4)
 
 static Framebuffer s_fb;
-Framebuffer *ui_get_fb(void) { return &s_fb; }
 static FT_Library  s_ft;
 static FT_Face     s_bold, s_semi, s_reg;     // Poppins Bold / SemiBold / Regular
 static u8         *s_bBuf, *s_sBuf, *s_rBuf;  // buffers TTF (gardés en vie)
 static u8         *s_logo, *s_ninten;         // images RGBA 200x200
 
 static inline u32 packColor(Color c) { return RGBA8(c.r, c.g, c.b, c.a); }
+
+// ---- theme ----------------------------------------------------------------
+// Deux jeux de valeurs, calques sur le systeme. Le theme clair n'est PAS
+// l'inversion du sombre : le vert et l'ambre concus pour un fond noir tombent
+// sous le seuil de lisibilite des qu'on eclaircit, donc ils sont assombris.
+UiTheme g_theme = THEME_DARK;
+
+#define THEMED(fn, dark, light) \
+    Color fn(void) { return g_theme == THEME_LIGHT ? (light) : (dark); }
+
+THEMED(theme_bg,    COL(0x2D,0x2D,0x2D), COL(0xEB,0xEB,0xEB))
+THEMED(theme_pane,  COL(0x3D,0x3D,0x3D), COL(0xFF,0xFF,0xFF))
+THEMED(theme_rail,  COL(0x35,0x35,0x35), COL(0xF7,0xF7,0xF7))
+THEMED(theme_sep,   COL(0x4A,0x4A,0x4A), COL(0xDC,0xDC,0xDC))
+THEMED(theme_sel,   COL(0x4A,0x4A,0x4A), COL(0xFF,0xFF,0xFF))
+THEMED(theme_text,  COL(0xFF,0xFF,0xFF), COL(0x2D,0x2D,0x2D))
+THEMED(theme_text2, COL(0xA8,0xA8,0xA8), COL(0x76,0x76,0x76))
+THEMED(theme_ok,    COL(0x3F,0xBF,0x6A), COL(0x1E,0x8E,0x45))
+THEMED(theme_warn,  COL(0xF5,0xA6,0x23), COL(0xB0,0x6E,0x00))
+#undef THEMED
 
 // ---- pixels ----
 static inline void putPixel(u32 *b, u32 st, int x, int y, u32 c) {
@@ -143,6 +163,119 @@ static void drawCF(u32 *b, u32 st, FT_Face fc, int cx, int y, int px, u32 col, c
     drawF(b, st, fc, cx - measureF(fc, px, s) / 2, y, px, col, s);
 }
 
+// ===========================================================================
+//  CROMO DEL SISTEMA — en-tete, barre de boutons, curseur, lignes d'option.
+//
+//  Ces primitives remplacent le dessin ad hoc de chaque ecran. Le but n'est pas
+//  seulement l'aspect : c'est que la position d'un element ne soit plus un
+//  nombre en dur recopie d'ecran en ecran. Tout part de HDR_H / FTR_H / ROW_H
+//  et de l'echelle SP_*, donc ajouter une ligne ne demande plus de recalculer
+//  les voisines.
+// ===========================================================================
+
+// Fond plein. Le systeme n'utilise pas de degrade : a plat, comme les Parametres.
+static void chromeClear(u32 *b, u32 st) {
+    u32 sw = st / sizeof(u32), bg = packColor(theme_bg());
+    for (int y = 0; y < FB_H; y++)
+        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+}
+
+// En-tete : pastille de marque, titre, et contexte a droite (console / version).
+// Le filet du bas est la signature visuelle des ecrans systeme.
+static void chromeHeader(u32 *b, u32 st, const char *title, const char *right) {
+    int cy = HDR_H / 2 + FS_TITLE / 3;   // ligne de base optique du texte
+    // Marque : le logo du romfs plutot qu'un carre de couleur. L'asset est deja
+    // embarque (200x200 RGBA), donc c'est gratuit en taille, et un en-tete
+    // systeme porte une identite, pas une pastille generique.
+    if (s_logo) blitImg(b, st, SP_LG, HDR_H / 2 - 20, 40, 40, s_logo);
+    else roundedCard(b, st, SP_LG, HDR_H / 2 - 16, 32, 32, 9, packColor(C_BLUE));
+    drawF(b, st, s_semi, SP_LG + 40 + SP_SM, cy, FS_TITLE, packColor(theme_text()), title);
+    if (right && right[0]) {
+        int w = measureF(s_reg, FS_CAP, right);
+        drawF(b, st, s_reg, FB_W - SP_LG - w, cy - 4, FS_CAP, packColor(theme_text2()), right);
+    }
+    fillRect(b, st, 0, HDR_H - 2, FB_W, 2, packColor(theme_sep()));
+}
+
+// Barre de boutons. Chaque indice = glyphe circulaire + verbe court, comme le
+// systeme. On dessine le cercle avec roundedCard de rayon = moitie du cote :
+// il n'y a pas de primitive cercle, et a 30 px la difference ne se voit pas.
+typedef struct { const char *btn; const char *label; } Hint;
+
+static void chromeFooter(u32 *b, u32 st, const Hint *hints, int n, const char *right) {
+    int y = FB_H - FTR_H;
+    fillRect(b, st, 0, y, FB_W, 2, packColor(theme_sep()));
+    int cy = y + FTR_H / 2;
+    int x  = SP_LG;
+    for (int i = 0; i < n; i++) {
+        int d = 30;
+        roundedCard(b, st, x, cy - d / 2, d, d, d / 2, packColor(theme_text2()));
+        int bw = measureF(s_semi, FS_CAP, hints[i].btn);
+        drawF(b, st, s_semi, x + (d - bw) / 2, cy + FS_CAP / 3,
+              FS_CAP, packColor(theme_bg()), hints[i].btn);
+        x += d + SP_XS;
+        drawF(b, st, s_reg, x, cy + FS_CAP / 3, FS_CAP, packColor(theme_text2()), hints[i].label);
+        x += measureF(s_reg, FS_CAP, hints[i].label) + SP_LG;
+    }
+    if (right && right[0]) {
+        int w = measureF(s_reg, FS_CAP, right);
+        drawF(b, st, s_reg, FB_W - SP_LG - w, cy + FS_CAP / 3,
+              FS_CAP, packColor(theme_text2()), right);
+    }
+}
+
+// Curseur de selection : anneau cyan AUTOUR de la surface, qui garde sa couleur.
+// Le systeme ne remplit pas l'element focalise — remplir est un reflexe de web,
+// et ca fait perdre l'etat (actif/inactif) que la couleur de fond portait.
+static void chromeCursor(u32 *b, u32 st, int x, int y, int w, int h) {
+    u32 c = packColor(C_CYAN);
+    roundedCard(b, st, x - 4, y - 4, w + 8, h + 8, RADIUS + 4, c);
+}
+
+// Ligne d'option : surface + titre + sous-titre optionnel. Renvoie le y de la
+// ligne suivante, pour que l'appelant empile sans calculer d'offsets.
+static int chromeRow(u32 *b, u32 st, int x, int y, int w,
+                     bool focused, const char *label, const char *sub) {
+    if (focused) chromeCursor(b, st, x, y, w, ROW_H);
+    roundedCard(b, st, x, y, w, ROW_H, RADIUS, packColor(theme_pane()));
+    if (sub && sub[0]) {
+        drawF(b, st, s_semi, x + SP_MD, y + 34, FS_ITEM, packColor(theme_text()), label);
+        drawF(b, st, s_reg,  x + SP_MD, y + 62, FS_CAP,  packColor(theme_text2()), sub);
+    } else {
+        drawF(b, st, s_semi, x + SP_MD, y + ROW_H / 2 + FS_ITEM / 3,
+              FS_ITEM, packColor(theme_text()), label);
+    }
+    return y + ROW_H + SP_XS;
+}
+
+// Pastille d'etat, alignee a droite d'une ligne.
+static void chromeBadge(u32 *b, u32 st, int rowX, int rowY, int rowW,
+                        const char *text, Color bg, Color fg) {
+    int tw = measureF(s_semi, FS_CAP, text);
+    int pw = tw + SP_MD * 2, ph = 34;
+    int px = rowX + rowW - SP_MD - pw, py = rowY + (ROW_H - ph) / 2;
+    roundedCard(b, st, px, py, pw, ph, ph / 2, packColor(bg));
+    drawF(b, st, s_semi, px + SP_MD, py + ph / 2 + FS_CAP / 3, FS_CAP, packColor(fg), text);
+}
+
+// Interrupteur systeme : piste + pastille, deux roundedCard. Un booleen se lit
+// d'un coup d'oeil ainsi, alors que l'ancien "[X] Desactivar OC" obligeait a lire
+// le libelle pour deduire l'etat courant.
+static void chromeToggle(u32 *b, u32 st, int rowX, int rowY, int rowW, bool on) {
+    int tw = 68, th = 36;
+    int tx = rowX + rowW - SP_MD - tw, ty = rowY + (ROW_H - th) / 2;
+    roundedCard(b, st, tx, ty, tw, th, th / 2, packColor(on ? C_CYAN : theme_sep()));
+    int kd = th - 8;
+    roundedCard(b, st, on ? tx + tw - kd - 4 : tx + 4, ty + 4, kd, kd, kd / 2,
+                packColor(COL(0xFF, 0xFF, 0xFF)));
+}
+
+// Intitule de section (majuscules, discret) au-dessus d'un groupe de lignes.
+static int chromeSection(u32 *b, u32 st, int x, int y, const char *text) {
+    drawF(b, st, s_semi, x, y + FS_LABEL, FS_LABEL, packColor(theme_text2()), text);
+    return y + FS_LABEL + SP_SM;
+}
+
 // ---- chargement police + image depuis le romfs ----
 static bool loadFace(const char *path, FT_Face *face, u8 **buf) {
     FILE *f = fopen(path, "rb");
@@ -190,276 +323,204 @@ void ui_exit(void) {
     if (s_rBuf) free(s_rBuf);
 }
 
-// sel = carte visee (bascule) ; isCurrent = mode deja charge (badge ACTUEL, non-basculable).
-static void drawCard(u32 *b, u32 st, int x, bool sel, bool isCurrent, int choice) {
-    int y = CARD_Y;
-    Color acc = (choice == CHOICE_NEXTENDO) ? C_BLUE : C_RED;
-    // Liseré coloré UNIQUEMENT sur la carte visée (celle vers laquelle on bascule).
-    if (sel) roundedCard(b, st, x - 4, y - 4, CARD_W + 8, CARD_H + 8, 26, packColor(acc));
-    // Carte actuelle = plus sombre (grisée, non-basculable) ; carte visée = claire.
-    roundedCard(b, st, x, y, CARD_W, CARD_H, 22,
-                packColor(sel ? C_CARD_SEL : (isCurrent ? C_BG : C_CARD)));
-
-    int cx = x + CARD_W / 2;
-    blitImg(b, st, cx - 75, y + 34, 150, 150, choice == CHOICE_NEXTENDO ? s_logo : s_ninten);
-    drawCF(b, st, s_semi, cx, y + 235, 36,
-           packColor(isCurrent ? C_SUBTLE : C_TITLE),
-           choice == CHOICE_NEXTENDO ? "Nextendo" : "Nintendo");
-
-    int by = y + 268;
-    if (isCurrent) {
-        // badge ACTUEL (vert) = le mode charge en ce moment
-        const char *bd = lang_str(STR_CURRENT_BADGE);
-        int bw = measureF(s_bold, 18, bd) + 30, bx = cx - bw / 2;
-        roundedCard(b, st, bx, by, bw, 30, 15, packColor(C_GREEN));
-        drawCF(b, st, s_bold, cx, by + 21, 18, packColor(COL(0x0C, 0x1A, 0x10)), bd);
-    } else if (sel) {
-        // badge BASCULER (couleur du mode) = la cible
-        const char *bd = lang_str(STR_SWITCH_BADGE);
-        int bw = measureF(s_bold, 18, bd) + 30, bx = cx - bw / 2;
-        roundedCard(b, st, bx, by, bw, 30, 15, packColor(acc));
-        drawCF(b, st, s_bold, cx, by + 21, 18, packColor(C_TITLE), bd);
+// ------- Ecran principal : rail de navigation + panneau -------
+static const char *railLabel(int i) {
+    switch (i) {
+        case RAIL_MODE: return lang_str(STR_RAIL_MODE);
+        case RAIL_SSBU: return lang_str(STR_RAIL_SSBU);
+        case RAIL_S2:   return lang_str(STR_RAIL_S2);
+        case RAIL_FLAG: return lang_str(STR_RAIL_FLAG);
+        default:        return lang_str(STR_RAIL_LANG);
     }
 }
 
-// Barre gauche "Splatoon 2 / BCAT" et barre droite "MK8D Flag", cote-a-cote.
-static void drawBcatBar(u32 *b, u32 st, bool focused) {
-    if (focused)
-        roundedCard(b, st, BAR_L_X - 4, BAR_Y - 4, BAR_W + 8, BAR_H + 8, 20, packColor(C_S2));
-    roundedCard(b, st, BAR_L_X, BAR_Y, BAR_W, BAR_H, 16,
-                packColor(focused ? C_CARD_SEL : C_CARD));
-    drawCF(b, st, s_semi, BAR_L_X + BAR_W / 2, BAR_Y + 40, 22,
-           packColor(focused ? C_TITLE : C_SUBTLE), lang_str(STR_S2_BAR));
-}
-
-static void drawFlagBar(u32 *b, u32 st, bool focused, const char *currentCode) {
-    if (focused)
-        roundedCard(b, st, BAR_R_X - 4, BAR_Y - 4, BAR_W + 8, BAR_H + 8, 20, packColor(C_FLAG));
-    roundedCard(b, st, BAR_R_X, BAR_Y, BAR_W, BAR_H, 16,
-                packColor(focused ? C_CARD_SEL : C_CARD));
-
-    char label[64];
-    if (currentCode && currentCode[0]) {
-        char fmt[64];
-        // lang_str returns a "%s" format — controlled by the developer, safe.
-        strncpy(fmt, lang_str(STR_FLAG_BAR_SET), sizeof(fmt) - 1);
-        fmt[sizeof(fmt) - 1] = '\0';
-        snprintf(label, sizeof(label), fmt, currentCode);
-    } else {
-        strncpy(label, lang_str(STR_FLAG_BAR), sizeof(label) - 1);
-        label[sizeof(label) - 1] = '\0';
+// Nombre de lignes du panneau pour une section. main.c en a besoin pour borner
+// le deplacement du focus : la logique de navigation ne doit pas deviner ce que
+// le rendu affiche, sinon les deux divergent des qu'on ajoute une ligne.
+int ui_pane_rows(int railSel, bool ssbuInstalled) {
+    switch (railSel) {
+        case RAIL_MODE: return 2;                        // Nextendo / Nintendo
+        case RAIL_SSBU: return ssbuInstalled ? 2 : 1;    // mod (+ overclock si installe)
+        case RAIL_LANG: return 4;                        // EN / ES / PT / FR
+        default:        return 1;                        // S2, drapeau : une action
     }
-    drawCF(b, st, s_semi, BAR_R_X + BAR_W / 2, BAR_Y + 40, 22,
-           packColor(focused ? C_TITLE : C_SUBTLE), label);
 }
 
-void ui_draw_picker(int selection, int current, int focus, const char *status,
-                    int updMaj, int updMin, int updPatch, const char *flagCode) {
+static void drawRail(u32 *b, u32 st, int railSel, bool railFocused) {
+    fillRect(b, st, 0, BODY_Y, RAIL_W, BODY_H, packColor(theme_rail()));
+    fillRect(b, st, RAIL_W - 2, BODY_Y, 2, BODY_H, packColor(theme_sep()));
+
+    int y = BODY_Y + SP_MD;
+    for (int i = 0; i < RAIL_N; i++) {
+        bool on = (railSel == i);
+        if (on) {
+            fillRect(b, st, 0, y, RAIL_W - 2, 56, packColor(theme_sel()));
+            // Liseré plein quand le rail a le focus, attenue quand il l'a cede
+            // au panneau : on voit d'un coup d'oeil OU vont les fleches.
+            fillRect(b, st, 0, y, railFocused ? 6 : 3, 56,
+                     packColor(railFocused ? C_CYAN : theme_sep()));
+        }
+        drawF(b, st, on ? s_semi : s_reg, SP_LG, y + 36, FS_ITEM,
+              packColor(on ? theme_text() : theme_text2()), railLabel(i));
+        y += 58;
+    }
+}
+
+void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
+                    const char *status, int updMaj, int updMin, int updPatch,
+                    const char *flagCode, bool ssbuInstalled, bool ssbuOcDisabled) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
-    for (int y = 0; y < FB_H; y++)
-        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+    chromeClear(b, st);
 
-    // Bandeau de mise a jour OBLIGATOIRE (si une version plus recente existe).
+    char ctx[64];
+    snprintf(ctx, sizeof(ctx), "v%d.%d.%d", NEXTENDO_VERSION_MAJOR,
+             NEXTENDO_VERSION_MINOR, NEXTENDO_VERSION_PATCH);
+    chromeHeader(b, st, lang_str(STR_TITLE_PRELUDE), ctx);
+    drawRail(b, st, railSel, !paneFocused);
+
+    int x = PANE_X + SP_LG, w = PANE_W - SP_LG * 2;
+    int y = BODY_Y + SP_MD;
+
     if (updMaj > 0) {
         char m[96];
         snprintf(m, sizeof(m), lang_str(STR_UPDATE_BANNER), updMaj, updMin, updPatch);
-        drawCF(b, st, s_semi, FB_W / 2, 32, 20, packColor(C_RED), m);
+        roundedCard(b, st, x, y, w, 56, RADIUS, packColor(C_RED));
+        drawF(b, st, s_semi, x + SP_MD, y + 36, FS_BODY, packColor(COL(0xFF,0xFF,0xFF)), m);
+        y += 56 + SP_SM;
     }
 
-    drawCF(b, st, s_bold, FB_W / 2, 84, 42, packColor(C_TITLE), lang_str(STR_TITLE_PRELUDE));
-    // sous-titre centre : "Mode actuel : NEXTENDO" (le nom du mode en sa couleur)
-    {
-        const char *lbl = lang_str(STR_MODE_ACTUAL_PREFIX);
-        const char *md  = (current == CHOICE_NEXTENDO) ? "NEXTENDO" : "NINTENDO";
-        int wl = measureF(s_reg, 23, lbl), wm = measureF(s_semi, 23, md);
-        int sx = FB_W / 2 - (wl + wm) / 2;
-        drawF(b, st, s_reg,  sx,      120, 23, packColor(C_SUBTLE), lbl);
-        drawF(b, st, s_semi, sx + wl, 120, 23,
-              packColor(current == CHOICE_NEXTENDO ? C_BLUE : C_RED), md);
-    }
+    y = chromeSection(b, st, x, y, railLabel(railSel));
+    // Le curseur n'apparait que si le panneau a le focus : sinon les fleches
+    // agissent sur le rail, et montrer deux curseurs mentirait sur leur effet.
+    #define FOC(i) (paneFocused && paneSel == (i))
 
-    bool modeFocus = (focus == FOCUS_MODE);
-    drawCard(b, st, CARD0_X, modeFocus && selection == CHOICE_NEXTENDO, current == CHOICE_NEXTENDO, CHOICE_NEXTENDO);
-    drawCard(b, st, CARD1_X, modeFocus && selection == CHOICE_NINTENDO, current == CHOICE_NINTENDO, CHOICE_NINTENDO);
-    drawBcatBar(b, st, focus == FOCUS_S2);
-    drawFlagBar(b, st, focus == FOCUS_FLAG, flagCode);
-
-    // Ligne de contexte selon le focus.
-    int cy = BAR_Y + BAR_H + 30;
-    if (focus == FOCUS_S2) {
-        drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE), lang_str(STR_DESC_S2));
-    } else if (focus == FOCUS_FLAG) {
-        drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE), lang_str(STR_DESC_FLAG));
-    } else if (selection == CHOICE_NEXTENDO) {
-        drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE), lang_str(STR_DESC_NEXTENDO));
+    if (railSel == RAIL_MODE) {
+        for (int i = 0; i < 2; i++) {
+            bool isNx = (i == CHOICE_NEXTENDO);
+            int rowY = y;
+            y = chromeRow(b, st, x, y, w, FOC(i), isNx ? "Nextendo" : "Nintendo",
+                          lang_str(isNx ? STR_DESC_NEXTENDO : STR_DESC_NINTENDO));
+            roundedCard(b, st, x + SP_MD - 4, rowY + ROW_H / 2 - 6, 12, 12, 6,
+                        packColor(isNx ? C_BLUE : C_RED));
+            if (current == i)
+                chromeBadge(b, st, x, rowY, w, lang_str(STR_BADGE_ACTIVE),
+                            theme_ok(), COL(0xFF,0xFF,0xFF));
+        }
+    } else if (railSel == RAIL_SSBU) {
+        int rowY = y;
+        y = chromeRow(b, st, x, y, w, FOC(0), lang_str(STR_S2_TITLE_MOD),
+                      lang_str(STR_SSBU_APPLIES));
+        chromeBadge(b, st, x, rowY, w,
+                    lang_str(ssbuInstalled ? STR_SSBU_INSTALLED : STR_SSBU_NOT_INSTALLED),
+                    ssbuInstalled ? theme_ok() : theme_sep(),
+                    ssbuInstalled ? COL(0xFF,0xFF,0xFF) : theme_text2());
+        if (ssbuInstalled) {
+            rowY = y;
+            y = chromeRow(b, st, x, y, w, FOC(1), lang_str(STR_SSBU_OC),
+                          lang_str(ssbuOcDisabled ? STR_SSBU_OC_OFF_DESC
+                                                  : STR_SSBU_OC_ON_DESC));
+            chromeToggle(b, st, x, rowY, w, !ssbuOcDisabled);
+        }
+    } else if (railSel == RAIL_S2) {
+        y = chromeRow(b, st, x, y, w, FOC(0), lang_str(STR_RAIL_S2), lang_str(STR_DESC_S2));
+    } else if (railSel == RAIL_FLAG) {
+        int rowY = y;
+        y = chromeRow(b, st, x, y, w, FOC(0), lang_str(STR_RAIL_FLAG), lang_str(STR_DESC_FLAG));
+        if (flagCode && flagCode[0])
+            chromeBadge(b, st, x, rowY, w, flagCode, theme_sep(), theme_text());
     } else {
-        drawCF(b, st, s_reg, FB_W / 2, cy, 21, packColor(C_SUBTLE), lang_str(STR_DESC_NINTENDO));
+        static const StringID ids[4] = { STR_LANG_EN, STR_LANG_ES, STR_LANG_PT, STR_LANG_FR };
+        for (int i = 0; i < 4; i++) {
+            int rowY = y;
+            y = chromeRow(b, st, x, y, w, FOC(i), lang_str(ids[i]), NULL);
+            if (i == (int)g_lang)
+                chromeBadge(b, st, x, rowY, w, lang_str(STR_LANG_DEFAULT),
+                            theme_ok(), COL(0xFF,0xFF,0xFF));
+        }
     }
+    #undef FOC
 
-    const char *helpStr = (focus == FOCUS_S2)   ? lang_str(STR_HELP_S2)
-                        : (focus == FOCUS_FLAG)  ? lang_str(STR_HELP_FLAG)
-                                                 : lang_str(STR_HELP_MODE);
-    drawCF(b, st, s_reg, FB_W / 2, FB_H - 50, 21, packColor(C_SUBTLE), helpStr);
     if (status && status[0])
-        drawCF(b, st, s_semi, FB_W / 2, FB_H - 22, 23, packColor(C_BLUE), status);
+        drawF(b, st, s_semi, x, FB_H - FTR_H - SP_SM, FS_CAP, packColor(C_CYAN), status);
 
+    // La barre de boutons dit ce que font les touches ICI et maintenant — pas une
+    // liste fixe. C'est la moitie du travail d'une barre systeme.
+    Hint h[4]; int n = 0;
+    if (paneFocused) {
+        h[n++] = (Hint){ "A", lang_str(railSel == RAIL_MODE ? STR_HINT_APPLY : STR_HINT_CHANGE) };
+        h[n++] = (Hint){ "B", lang_str(STR_HINT_BACK) };
+    } else {
+        h[n++] = (Hint){ "A", lang_str(STR_HINT_OPEN) };
+        h[n++] = (Hint){ "+", lang_str(STR_HINT_EXIT) };
+    }
+    chromeFooter(b, st, h, n, NULL);
     framebufferEnd(&s_fb);
 }
 
-// Popup de CONFIRMATION plein ecran avant d'appliquer + redemarrer.
+// ------- Dialogue de confirmation (style systeme) -------
+// Le systeme ne centre pas un mur de texte : boite compacte, et les ACTIONS en
+// bas, separees par un filet. On garde les glyphes A/B dessus parce que l'entree
+// reste A/B — annoncer des boutons cliquables qu'on ne peut pas parcourir serait
+// mentir sur le modele d'interaction.
 void ui_draw_confirm(int selection, bool warnNoEmummc) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
-    for (int y = 0; y < FB_H; y++)
-        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
-
     bool nx = (selection == CHOICE_NEXTENDO);
-    u32 acc = packColor(nx ? C_BLUE : C_RED);
-    // L'avertissement ne concerne que le mode NINTENDO : c'est le seul ou la console parle aux
-    // vrais serveurs. En mode NEXTENDO le DNS-MITM confine tout chez nous, l'identite ne fuit pas.
-    bool warn = warnNoEmummc && !nx;
 
-    // carte centrale avec liseré coloré ; agrandie pour loger l'avertissement
-    int cw = 820, ch = warn ? 500 : 380, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
-    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
-    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
+    chromeClear(b, st);
+    chromeHeader(b, st, lang_str(STR_TITLE_PRELUDE), NULL);
 
-    int cx = FB_W / 2;
-    drawCF(b, st, s_bold, cx, cyy + 78, 40, packColor(C_TITLE),
+    // Voile : le dialogue doit se lire comme pose PAR-DESSUS l'ecran, pas comme
+    // un ecran de plus. C'est ce qui distingue une modale d'une navigation.
+    u32 sw = st / sizeof(u32);
+    for (int y = 0; y < FB_H; y++)
+        for (int x = 0; x < FB_W; x++) {
+            u32 d = b[y * sw + x];
+            b[y * sw + x] = blendPix(d, 0, 0, 0, g_theme == THEME_LIGHT ? 90 : 130);
+        }
+
+    int dw = 780, dh = warnNoEmummc ? 470 : 300;
+    int dx = (FB_W - dw) / 2, dy = (FB_H - dh) / 2;
+    roundedCard(b, st, dx, dy, dw, dh, RADIUS + 6, packColor(theme_pane()));
+
+    int y = dy + SP_XL;
+    drawCF(b, st, s_semi, FB_W / 2, y, FS_BIG, packColor(theme_text()),
            lang_str(nx ? STR_CONFIRM_NEXTENDO : STR_CONFIRM_NINTENDO));
-    drawCF(b, st, s_semi, cx, cyy + 138, 27, acc,
+    y += SP_LG;
+    drawCF(b, st, s_reg, FB_W / 2, y, FS_BODY, packColor(theme_text2()),
            lang_str(STR_CONFIRM_REBOOT));
-    // Retour a NINTENDO : le resultat depend du type de console. En emuMMC on pose
-    // blank_prodinfo_emummc=1, donc l'identite est blanchie et les services en ligne
-    // ne marchent plus ; en sysNAND ce reglage n'a aucun effet et le retour est reel.
-    // warnNoEmummc == false  =>  la console A un emuMMC.
-    drawCF(b, st, s_reg, cx, cyy + 188, 22, packColor(C_SUBTLE),
+    y += SP_MD + SP_XS;
+    // warnNoEmummc == false => la console A un emuMMC (PRODINFO blanchi -> online HS).
+    drawCF(b, st, s_reg, FB_W / 2, y, FS_CAP, packColor(theme_text2()),
            lang_str(nx ? STR_CONFIRM_RESTART_NEXTENDO
                        : (warnNoEmummc ? STR_CONFIRM_RESTART_NINTENDO
                                        : STR_CONFIRM_RESTART_NINTENDO_EMU)));
 
-    if (warn) {
-        u32 wc = packColor(C_WARN);
-        drawCF(b, st, s_bold, cx, cyy + 240, 25, wc,
-               lang_str(STR_WARN_TITLE));
-        drawCF(b, st, s_reg, cx, cyy + 278, 21, packColor(C_SUBTLE),
-               lang_str(STR_WARN_LINE1));
-        drawCF(b, st, s_reg, cx, cyy + 306, 21, packColor(C_SUBTLE),
-               lang_str(STR_WARN_LINE2));
-        drawCF(b, st, s_reg, cx, cyy + 334, 21, packColor(C_SUBTLE),
-               lang_str(STR_WARN_LINE3));
-        drawCF(b, st, s_reg, cx, cyy + 362, 21, packColor(C_SUBTLE),
-               lang_str(STR_WARN_LINE4));
-    }
-
-    drawCF(b, st, s_reg, cx, cyy + (warn ? 400 : 218), 22, packColor(C_SUBTLE),
-           lang_str(STR_CONFIRM_CLOSE_GAMES));
-
-    // rappel des touches, en bas de la carte
-    int by = cyy + ch - 46;
-    drawCF(b, st, s_semi, cx - 150, by, 26, packColor(C_GREEN), lang_str(STR_CONFIRM_A));
-    drawCF(b, st, s_semi, cx + 150, by, 26, packColor(C_SUBTLE), lang_str(STR_CONFIRM_B));
-
-    framebufferEnd(&s_fb);
-}
-
-// ------- Ecran d'explication "Planning en ligne Splatoon 2" -------
-void ui_draw_s2_info(void) {
-    u32 st;
-    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
-    for (int y = 0; y < FB_H; y++)
-        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
-
-    u32 acc = packColor(C_S2);
-    int cw = 940, ch = 440, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
-    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
-    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
-
-    int cx = FB_W / 2;
-    drawCF(b, st, s_bold, cx, cyy + 74, 38, packColor(C_TITLE), lang_str(STR_S2_TITLE));
-    drawCF(b, st, s_reg, cx, cyy + 132, 22, packColor(C_SUBTLE),
-           lang_str(STR_S2_DESC1));
-    drawCF(b, st, s_reg, cx, cyy + 162, 22, packColor(C_SUBTLE),
-           lang_str(STR_S2_DESC2));
-    drawCF(b, st, s_semi, cx, cyy + 214, 22, acc,
-           lang_str(STR_S2_DESC3));
-    drawCF(b, st, s_semi, cx, cyy + 256, 22, packColor(C_GREEN),
-           lang_str(STR_S2_DESC4));
-
-    int by = cyy + ch - 46;
-    drawCF(b, st, s_semi, cx - 160, by, 26, acc, lang_str(STR_S2_A));
-    drawCF(b, st, s_semi, cx + 160, by, 26, packColor(C_SUBTLE), lang_str(STR_S2_B));
-
-    framebufferEnd(&s_fb);
-}
-
-// ------- SSBU mod install/remove screen -------
-void ui_draw_ssbu_mod(bool installed, bool ocDisabled) {
-    u32 st;
-    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
-    for (int y = 0; y < FB_H; y++)
-        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
-
-    // Smash gold accent
-    // Carte agrandie (380 -> 460) : la ligne d'etat de l'overclock et sa
-    // explication tiennent sous le statut du mod sans coller aux boutons.
-    u32 acc = packColor(COL(0xFF, 0xC0, 0x00));
-    int cw = 960, ch = 460, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
-    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
-    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
-
-    int cx = FB_W / 2;
-    drawCF(b, st, s_bold, cx, cyy + 62, 36, packColor(C_TITLE), "SSBU Online Deluxe");
-    drawCF(b, st, s_reg,  cx, cyy + 114, 21, packColor(C_SUBTLE),
-           "Mod de partidas rapidas para Super Smash Bros. Ultimate.");
-    drawCF(b, st, s_reg,  cx, cyy + 144, 21, packColor(C_SUBTLE),
-           "Mejora la busqueda de rivales en linea (ssbu-online-deluxe v1.3.0).");
-
-    if (installed) {
-        drawCF(b, st, s_semi, cx, cyy + 198, 24, packColor(C_GREEN),  "Estado: Instalado");
-        drawCF(b, st, s_semi, cx, cyy + 236, 22, packColor(C_SUBTLE),
-               "El mod se aplica al reiniciar en modo Nextendo.");
-    } else {
-        drawCF(b, st, s_semi, cx, cyy + 198, 24, packColor(C_SUBTLE), "Estado: No instalado");
-        drawCF(b, st, s_semi, cx, cyy + 236, 22, packColor(C_SUBTLE),
-               "El mod se activara al reiniciar en modo Nextendo.");
-    }
-
-    // Overclock embarque du mod. N'a de sens QUE si le mod est installe : sans lui,
-    // reposer le sysmodule 00FF0000A11CE0FF laisserait un overclock orphelin actif
-    // au boot. L'option n'est donc ni affichee ni active tant que le mod est absent.
-    // Desactive = l'etat SAIN pour qui utilise deja Horizon OC / sys-clk, donc vert
-    // et non gris "inactif".
-    if (installed) {
-        if (ocDisabled) {
-            drawCF(b, st, s_semi, cx, cyy + 296, 23, packColor(C_GREEN),
-                   "Overclock del mod: Desactivado");
-            drawCF(b, st, s_reg,  cx, cyy + 328, 20, packColor(C_SUBTLE),
-                   "Compatible con Horizon OC / sys-clk.");
-        } else {
-            drawCF(b, st, s_semi, cx, cyy + 296, 23, acc,
-                   "Overclock del mod: Activado");
-            drawCF(b, st, s_reg,  cx, cyy + 328, 20, packColor(C_SUBTLE),
-                   "Desactivalo si usas Horizon OC / sys-clk (la consola se congela).");
+    if (warnNoEmummc) {
+        y += SP_MD;
+        int wx = dx + SP_LG, ww = dw - SP_LG * 2, wh = 150;
+        roundedCard(b, st, wx, y, ww, wh, RADIUS, packColor(theme_sel()));
+        fillRect(b, st, wx, y, 5, wh, packColor(theme_warn()));
+        int ty = y + SP_MD + SP_XS;
+        drawF(b, st, s_semi, wx + SP_MD, ty, FS_BODY, packColor(theme_warn()),
+              lang_str(STR_WARN_TITLE));
+        const StringID ln[3] = { STR_WARN_LINE1, STR_WARN_LINE2, STR_WARN_LINE3 };
+        for (int i = 0; i < 3; i++) {
+            ty += 30;
+            drawF(b, st, s_reg, wx + SP_MD, ty, FS_CAP, packColor(theme_text2()),
+                  lang_str(ln[i]));
         }
     }
 
-    int by = cyy + ch - 46;
-    const char *aLabel = installed ? "[A] Desinstalar" : "[A] Instalar";
-    if (installed) {
-        const char *xLabel = ocDisabled ? "[X] Activar OC" : "[X] Desactivar OC";
-        drawCF(b, st, s_semi, cx - 300, by, 24, acc,                  aLabel);
-        drawCF(b, st, s_semi, cx,       by, 24, acc,                  xLabel);
-        drawCF(b, st, s_semi, cx + 300, by, 24, packColor(C_SUBTLE),  "[B] Volver");
-    } else {
-        drawCF(b, st, s_semi, cx - 180, by, 26, acc,                  aLabel);
-        drawCF(b, st, s_semi, cx + 180, by, 26, packColor(C_SUBTLE),  "[B] Volver");
-    }
+    // Actions en bas, separees par un filet vertical : disposition du systeme.
+    int ay = dy + dh - 64;
+    fillRect(b, st, dx, ay, dw, 2, packColor(theme_sep()));
+    fillRect(b, st, dx + dw / 2, ay, 2, 64, packColor(theme_sep()));
+    drawCF(b, st, s_reg,  dx + dw / 4,     ay + 42, FS_BODY,
+           packColor(theme_text2()), lang_str(STR_CONFIRM_B));
+    drawCF(b, st, s_semi, dx + dw * 3 / 4, ay + 42, FS_BODY,
+           packColor(C_CYAN), lang_str(STR_CONFIRM_A));
 
     framebufferEnd(&s_fb);
 }
@@ -468,244 +529,152 @@ void ui_draw_ssbu_mod(bool installed, bool ocDisabled) {
 void ui_draw_progress(const char *line) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
-    for (int y = 0; y < FB_H; y++)
-        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
-
-    drawCF(b, st, s_bold, FB_W / 2, FB_H / 2 - 24, 36, packColor(C_TITLE), lang_str(STR_PROGRESS_TITLE));
-    drawCF(b, st, s_semi, FB_W / 2, FB_H / 2 + 30, 26, packColor(C_S2), line ? line : lang_str(STR_PROGRESS_WAIT));
-
+    chromeClear(b, st);
+    chromeHeader(b, st, lang_str(STR_TITLE_PRELUDE), NULL);
+    drawCF(b, st, s_semi, FB_W / 2, FB_H / 2 - SP_XS, FS_BIG, packColor(theme_text()), line);
+    drawCF(b, st, s_reg, FB_W / 2, FB_H / 2 + SP_LG, FS_BODY, packColor(theme_text2()),
+           lang_str(STR_PROGRESS_WAIT));
     framebufferEnd(&s_fb);
 }
 
-// ------- Ecran de resultat (succes vert / erreur rouge) -------
+// ------- Ecran de resultat -------
+// Le statut est porte par une pastille coloree ET par le texte : la couleur
+// seule exclut ceux qui la distinguent mal, et sur un ecran de resultat le
+// message est justement la seule chose qui compte.
 void ui_draw_result(const char *title, const char *msg, bool ok) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
-    for (int y = 0; y < FB_H; y++)
-        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+    chromeClear(b, st);
+    chromeHeader(b, st, lang_str(STR_TITLE_PRELUDE), NULL);
 
-    u32 acc = packColor(ok ? C_GREEN : C_RED);
-    int cw = 940, ch = 300, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
-    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
-    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
+    int dw = 800, dh = 260, dx = (FB_W - dw) / 2, dy = (FB_H - dh) / 2;
+    roundedCard(b, st, dx, dy, dw, dh, RADIUS + 6, packColor(theme_pane()));
+    fillRect(b, st, dx, dy, dw, 6, packColor(ok ? theme_ok() : C_RED));
 
-    int cx = FB_W / 2;
-    drawCF(b, st, s_bold, cx, cyy + 92, 36, acc, title ? title : "");
-    drawCF(b, st, s_reg, cx, cyy + 158, 22, packColor(C_TITLE), msg ? msg : "");
-    drawCF(b, st, s_semi, cx, cyy + ch - 44, 24, packColor(C_SUBTLE), lang_str(STR_RESULT_RETURN));
+    drawCF(b, st, s_semi, FB_W / 2, dy + 84, FS_BIG, packColor(theme_text()), title);
+    drawCF(b, st, s_reg, FB_W / 2, dy + 84 + SP_LG + SP_XS, FS_BODY,
+           packColor(theme_text2()), msg);
 
+    const Hint h[] = { { "A", lang_str(STR_HINT_BACK) } };
+    chromeFooter(b, st, h, 1, NULL);
     framebufferEnd(&s_fb);
 }
 
-// ------- Menu de sélection de langue (R depuis le picker) -------
-void ui_draw_lang_menu(int sel) {
+// ------- Ecran d'explication "Planning en ligne Splatoon 2" -------
+void ui_draw_s2_info(void) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
-    for (int y = 0; y < FB_H; y++)
-        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+    chromeClear(b, st);
+    chromeHeader(b, st, lang_str(STR_S2_TITLE), NULL);
 
-    u32 acc = packColor(C_BLUE);
-    int cw = 700, ch = 460, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
-    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
-    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
-
-    int cx = FB_W / 2;
-    drawCF(b, st, s_bold, cx, cyy + 60, 36, packColor(C_TITLE), lang_str(STR_LANG_TITLE));
-
-    static const StringID lang_ids[4] = { STR_LANG_EN, STR_LANG_ES, STR_LANG_PT, STR_LANG_FR };
+    int x = SP_XL, y = BODY_Y + SP_LG;
+    const StringID ln[4] = { STR_S2_DESC1, STR_S2_DESC2, STR_S2_DESC3, STR_S2_DESC4 };
     for (int i = 0; i < 4; i++) {
-        int rowY = cyy + 120 + i * 70;
-        bool hovered = (i == sel);
-        bool current = (i == g_lang);
-
-        if (hovered)
-            roundedCard(b, st, cxx + 20, rowY - 4, cw - 40, 54, 12, packColor(C_CARD_SEL));
-
-        drawF(b, st, s_semi, cxx + 50, rowY + 22, 28,
-              packColor(hovered ? C_TITLE : (current ? C_GREEN : C_SUBTLE)),
-              lang_str(lang_ids[i]));
-
-        if (current) {
-            const char *defLabel = lang_str(STR_LANG_DEFAULT);
-            int dw = measureF(s_reg, 18, defLabel);
-            drawF(b, st, s_reg, cxx + cw - 50 - dw, rowY + 24, 18,
-                  packColor(C_GREEN), defLabel);
-        }
+        drawF(b, st, s_reg, x, y + FS_BODY, FS_BODY, packColor(theme_text2()), lang_str(ln[i]));
+        y += SP_LG;
     }
 
-    drawCF(b, st, s_semi, cx, cyy + ch - 40, 22, packColor(C_GREEN),
-           lang_str(STR_LANG_A_SELECT));
-    drawCF(b, st, s_semi, cx, cyy + ch - 12, 20, packColor(C_SUBTLE),
-           lang_str(STR_LANG_B_BACK));
-
+    const Hint h[] = { { "A", lang_str(STR_SSBU_INSTALL) }, { "B", lang_str(STR_HINT_BACK) } };
+    chromeFooter(b, st, h, 2, NULL);
     framebufferEnd(&s_fb);
 }
 
-// ------- Ecran de confirmation avant mise a jour -------
+// ------- Confirmation avant mise a jour -------
 void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
-    for (int y = 0; y < FB_H; y++)
-        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+    chromeClear(b, st);
+    chromeHeader(b, st, lang_str(STR_TITLE_PRELUDE), NULL);
 
-    u32 acc = packColor(C_BLUE);
-    int cw = 700, ch = 360, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
-    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
-    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
-
-    int cx = FB_W / 2;
-    drawCF(b, st, s_bold, cx, cyy + 70, 36, packColor(C_TITLE),
-           lang_str(STR_UPD_CONFIRM_TITLE));
+    int dw = 780, dh = 300, dx = (FB_W - dw) / 2, dy = (FB_H - dh) / 2;
+    roundedCard(b, st, dx, dy, dw, dh, RADIUS + 6, packColor(theme_pane()));
 
     char ver[64];
-    // lang_str fournit un format avec %%d — controlee par le developpeur, safe
-    char updFmt[64];
-    strncpy(updFmt, lang_str(STR_UPD_CONFIRM_VERSION), sizeof(updFmt) - 1);
-    updFmt[sizeof(updFmt) - 1] = '\0';
-    snprintf(ver, sizeof(ver), updFmt, buildMaj, buildMin, buildPatch);
-    drawCF(b, st, s_semi, cx, cyy + 130, 24, acc, ver);
+    snprintf(ver, sizeof(ver), lang_str(STR_UPD_CONFIRM_VERSION), buildMaj, buildMin, buildPatch);
+    drawCF(b, st, s_semi, FB_W / 2, dy + SP_XL, FS_BIG, packColor(theme_text()),
+           lang_str(STR_UPD_CONFIRM_TITLE));
+    drawCF(b, st, s_semi, FB_W / 2, dy + SP_XL + SP_LG, FS_BODY, packColor(C_CYAN), ver);
+    drawCF(b, st, s_reg, FB_W / 2, dy + SP_XL + SP_LG * 2, FS_CAP,
+           packColor(theme_text2()), lang_str(STR_UPD_CONFIRM_DESC));
 
-    drawCF(b, st, s_reg, cx, cyy + 180, 22, packColor(C_SUBTLE),
-           lang_str(STR_UPD_CONFIRM_DESC));
-
-    int by = cyy + ch - 50;
-    drawCF(b, st, s_semi, cx - 150, by, 24, packColor(C_GREEN),
-           lang_str(STR_UPD_CONFIRM_A));
-    drawCF(b, st, s_semi, cx + 150, by, 24, packColor(C_SUBTLE),
-           lang_str(STR_UPD_CONFIRM_B));
-
+    int ay = dy + dh - 64;
+    fillRect(b, st, dx, ay, dw, 2, packColor(theme_sep()));
+    fillRect(b, st, dx + dw / 2, ay, 2, 64, packColor(theme_sep()));
+    drawCF(b, st, s_reg,  dx + dw / 4,     ay + 42, FS_BODY,
+           packColor(theme_text2()), lang_str(STR_UPD_CONFIRM_B));
+    drawCF(b, st, s_semi, dx + dw * 3 / 4, ay + 42, FS_BODY,
+           packColor(C_CYAN), lang_str(STR_UPD_CONFIRM_A));
     framebufferEnd(&s_fb);
 }
 
-// ------- Toast semi-transparent en bas de l'écran -------
+// ------- Toast -------
 void ui_draw_toast(const char *text) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 sw = st / sizeof(u32);
-
-    int tw = measureF(s_semi, 24, text);
-    int pad = 40;
-    int toastW = tw + pad * 2;
-    int toastH = 60;
-    int toastX = (FB_W - toastW) / 2;
-    int toastY = FB_H - toastH - 40;
-
-    // Fond semi-transparent noir
-    for (int y = toastY; y < toastY + toastH && y < FB_H; y++)
-        for (int x = toastX; x < toastX + toastW && x < FB_W; x++)
-            b[y * (sw) + x] = RGBA8(0, 0, 0, 200);
-
-    // Bordure arrondie (simulation)
-    u32 border = RGBA8(0x44, 0x88, 0xFF, 255);
-    for (int x = toastX; x < toastX + toastW && x < FB_W; x++) {
-        b[toastY * sw + x] = border;
-        b[(toastY + toastH - 1) * sw + x] = border;
-    }
-    for (int y = toastY; y < toastY + toastH && y < FB_H; y++) {
-        b[y * sw + toastX] = border;
-        b[y * sw + toastX + toastW - 1] = border;
-    }
-
-    // Texte centré
-    drawCF(b, st, s_semi, FB_W / 2, toastY + toastH / 2 + 8, 24, RGBA8(0xFF, 0xFF, 0xFF, 255), text);
-
+    int tw = measureF(s_semi, FS_BODY, text) + SP_LG * 2, th = 56;
+    int tx = (FB_W - tw) / 2, ty = FB_H - FTR_H - th - SP_MD;
+    roundedCard(b, st, tx, ty, tw, th, th / 2, packColor(theme_sel()));
+    drawCF(b, st, s_semi, FB_W / 2, ty + th / 2 + FS_BODY / 3, FS_BODY,
+           packColor(theme_text()), text);
     framebufferEnd(&s_fb);
 }
 
 void ui_draw_loading(const char *text) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
-    for (int y = 0; y < FB_H; y++)
-        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
-
-    drawCF(b, st, s_bold, FB_W / 2, FB_H / 2 - 24, 36, packColor(C_TITLE), "Prelude");
-    drawCF(b, st, s_semi, FB_W / 2, FB_H / 2 + 30, 26, packColor(C_S2), text ? text : "Cargando...");
-
+    chromeClear(b, st);
+    chromeHeader(b, st, lang_str(STR_TITLE_PRELUDE), NULL);
+    drawCF(b, st, s_semi, FB_W / 2, FB_H / 2, FS_BIG, packColor(theme_text2()), text);
     framebufferEnd(&s_fb);
 }
 
-// ------- Menu de selection de drapeau MK8D -------
-// sel = index selectionne (0-109), scroll = premier visible, currentCode = "" si aucun.
+// ------- Liste de pays MK8D (defilante) -------
+// FLAG_ROWS reste le nombre de lignes visibles (main.c s'en sert pour le
+// defilement) : on ne change QUE la presentation, pas le contrat.
 void ui_draw_flag_menu(int sel, int scroll, const char *currentCode) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    u32 sw = st / sizeof(u32), bg = packColor(C_BG);
-    for (int y = 0; y < FB_H; y++)
-        for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
+    chromeClear(b, st);
 
-    u32 acc = packColor(C_FLAG);
-    int cw = 940, ch = 568, cxx = (FB_W - cw) / 2, cyy = (FB_H - ch) / 2;
-    roundedCard(b, st, cxx - 4, cyy - 4, cw + 8, ch + 8, 28, acc);
-    roundedCard(b, st, cxx, cyy, cw, ch, 24, packColor(C_CARD));
-
-    int cx = FB_W / 2;
-
-    // Title + installed state
-    drawCF(b, st, s_bold, cx, cyy + 50, 32, packColor(C_TITLE), lang_str(STR_FLAG_MENU_TITLE));
+    char ctx[64] = {0};
     if (currentCode && currentCode[0]) {
-        // Show the currently installed country name
         int idx = flag_find_index(currentCode);
-        char cur[64];
-        if (idx >= 0)
-            snprintf(cur, sizeof(cur), "%s  %s", currentCode, g_flags[idx].name);
-        else
-            snprintf(cur, sizeof(cur), "%s", currentCode);
-        drawCF(b, st, s_reg, cx, cyy + 84, 19, packColor(C_GREEN), cur);
+        if (idx >= 0) snprintf(ctx, sizeof(ctx), "%s  %s", currentCode, g_flags[idx].name);
+        else          snprintf(ctx, sizeof(ctx), "%s", currentCode);
     } else {
-        drawCF(b, st, s_reg, cx, cyy + 84, 19, packColor(C_SUBTLE), lang_str(STR_FLAG_NONE));
+        snprintf(ctx, sizeof(ctx), "%s", lang_str(STR_FLAG_NONE));
     }
+    chromeHeader(b, st, lang_str(STR_FLAG_MENU_TITLE), ctx);
 
-    // Scrollable country list
-    int rowH = 50;
-    int rowsY = cyy + 108;
+    // Lignes plus compactes que ROW_H : c'est une liste a parcourir, pas un
+    // ecran de reglages. Le pas vient d'une constante, pas d'un nombre en dur.
+    const int rh = 58;
+    int x = SP_XL, w = FB_W - SP_XL * 2, y = BODY_Y + SP_SM;
+
     for (int r = 0; r < FLAG_ROWS; r++) {
         int idx = scroll + r;
         if (idx >= FLAG_COUNT) break;
-        int ry = rowsY + r * rowH;
-        bool hovered = (idx == sel);
-        bool installed = (currentCode && currentCode[0]
-                          && strncmp(g_flags[idx].code, currentCode, 2) == 0);
+        int ry = y + r * rh;
+        if (ry + rh > FB_H - FTR_H) break;          // ne jamais deborder sur la barre
+        bool hov = (idx == sel);
+        bool ins = (currentCode && currentCode[0]
+                    && strncmp(g_flags[idx].code, currentCode, 2) == 0);
 
-        if (hovered)
-            roundedCard(b, st, cxx + 16, ry - 2, cw - 32, rowH - 4, 10, packColor(C_CARD_SEL));
+        if (hov) chromeCursor(b, st, x, ry, w, rh - 6);
+        roundedCard(b, st, x, ry, w, rh - 6, RADIUS, packColor(theme_pane()));
 
-        u32 textCol = packColor(hovered ? C_TITLE : (installed ? C_GREEN : C_SUBTLE));
-
-        // Code (bold, left)
-        drawF(b, st, s_bold, cxx + 40, ry + 32, 24, textCol, g_flags[idx].code);
-        // Name (regular, after code)
-        drawF(b, st, s_reg,  cxx + 100, ry + 32, 22, textCol, g_flags[idx].name);
-
-        // "INSTALLED" badge on the right
-        if (installed) {
-            const char *badge = lang_str(STR_FLAG_INSTALLED);
-            int bw = measureF(s_bold, 16, badge) + 20;
-            int bx = cxx + cw - 30 - bw;
-            roundedCard(b, st, bx, ry + 10, bw, 26, 10, packColor(C_GREEN));
-            drawCF(b, st, s_bold, bx + bw / 2, ry + 26, 16,
-                   packColor(COL(0x0C, 0x1A, 0x10)), badge);
+        u32 col = packColor(hov ? theme_text() : theme_text2());
+        drawF(b, st, s_semi, x + SP_MD,      ry + 36, FS_ITEM, col, g_flags[idx].code);
+        drawF(b, st, s_reg,  x + SP_MD + 74, ry + 36, FS_BODY, col, g_flags[idx].name);
+        if (ins) {
+            const char *lbl = lang_str(STR_FLAG_INSTALLED);
+            int tw = measureF(s_semi, FS_CAP, lbl);
+            drawF(b, st, s_semi, x + w - SP_MD - tw, ry + 36, FS_CAP,
+                  packColor(theme_ok()), lbl);
         }
     }
 
-    // Scroll indicator (right edge)
-    if (FLAG_COUNT > FLAG_ROWS) {
-        int trackH = FLAG_ROWS * rowH;
-        int thumbH = trackH * FLAG_ROWS / FLAG_COUNT;
-        if (thumbH < 12) thumbH = 12;
-        int thumbY = rowsY + (trackH - thumbH) * scroll / (FLAG_COUNT - FLAG_ROWS);
-        fillRect(b, st, cxx + cw - 14, rowsY, 6, trackH, packColor(C_CARD_SEL));
-        fillRect(b, st, cxx + cw - 14, thumbY, 6, thumbH, packColor(C_FLAG));
-    }
-
-    // Bottom hints
-    int by = cyy + ch - 44;
-    drawCF(b, st, s_semi, cx - 160, by, 24, acc,               lang_str(STR_FLAG_A));
-    drawCF(b, st, s_semi, cx + 160, by, 24, packColor(C_SUBTLE), lang_str(STR_FLAG_B));
-
+    const Hint h[] = { { "A", lang_str(STR_SSBU_INSTALL) }, { "B", lang_str(STR_HINT_BACK) } };
+    chromeFooter(b, st, h, 2, NULL);
     framebufferEnd(&s_fb);
 }

@@ -155,6 +155,30 @@ typedef enum {
     STR_STATUS_FLAG_WRITE_FAIL,       // "Write error"
     STR_STATUS_FLAG_WRITE_FAIL_DESC,  // "Cannot write to SD card."
 
+    // --- Nouveau cromo (rail de navigation + barre de boutons) ---
+    STR_RAIL_MODE,                    // "Mode"        entree du rail
+    STR_RAIL_S2,                      // "Splatoon 2"
+    STR_RAIL_FLAG,                    // "Country"
+    STR_RAIL_SSBU,                    // "Smash"       (L)
+    STR_RAIL_LANG,                    // "Language"    (R)
+    STR_BADGE_ACTIVE,                 // "Active"      pastille du mode courant
+    STR_HINT_APPLY,                   // "Apply"       barre de boutons
+    STR_HINT_EXIT,                    // "Exit"
+    STR_HINT_BACK,                    // "Back"
+    STR_HINT_CHANGE,                  // "Change"
+    STR_HINT_OPEN,                    // "Open"   (rail -> panneau)
+
+    // --- Section SSBU (lignes + interrupteur) ---
+    STR_S2_TITLE_MOD,                 // "Mod"
+    STR_SSBU_APPLIES,                 // "Applies on reboot in Nextendo mode"
+    STR_SSBU_INSTALLED,               // "Installed"
+    STR_SSBU_NOT_INSTALLED,           // "Not installed"
+    STR_SSBU_INSTALL,                 // "Install"
+    STR_SSBU_UNINSTALL,               // "Uninstall"
+    STR_SSBU_OC,                      // "Mod overclock"
+    STR_SSBU_OC_ON_DESC,              // "Turn it off if you use Horizon OC / sys-clk"
+    STR_SSBU_OC_OFF_DESC,             // "Compatible with Horizon OC / sys-clk"
+
     STR_COUNT
 } StringID;
 

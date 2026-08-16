@@ -51,10 +51,18 @@ const char *server_display_name(void) {
 #define NEXTENDO_EXOSPHERE_INI "sdmc:/exosphere.ini"
 #define NEXTENDO_TRACE NEXTENDO_TRACE_PATH
 
+// Verrou : depuis que le travail reseau du demarrage tourne dans un thread a part
+// (pour supprimer l'ecran de chargement), main ET ce thread tracent en parallele.
+// Sans ca, deux fopen/fputs/fclose concurrents entrelacent les lignes — et une
+// trace illisible ne vaut rien le jour ou c'est notre seul temoin.
+static Mutex s_traceMtx;
+
 void nextendo_trace(const char *step) {
+    mutexLock(&s_traceMtx);
     FILE *f = fopen(NEXTENDO_TRACE, "a");
     if (f) { fputs(step, f); fputc('\n', f); fclose(f); }
     fsdevCommitDevice("sdmc");   // durable tout de suite : c'est le point de la trace
+    mutexUnlock(&s_traceMtx);
 }
 
 // --- mkdir -p (mkdir ne cree pas les dirs intermediaires sur fsdev) ---
@@ -129,6 +137,20 @@ char *nextendo_hosts_build(const char *ip) {
     snprintf(line, sizeof(line), "%s g2ee2e300-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // ACNH
     snprintf(line, sizeof(line), "%s g26cfaf00-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // Strikers
     snprintf(line, sizeof(line), "%s g20de2100-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // LM3
+    // --- Splatoon 3 / NPLN ---
+    // Splatoon 3 n'utilise PAS NEX : il parle NPLN (gRPC sur HTTP/2), donc aucun
+    // hote g2*.s.n. Les quatre premiers finissent par srv.nintendo.net et sont deja
+    // pris par le wildcard *srv ; on les met quand meme en explicite, meme raison que
+    // pour les jeux NEX ci-dessus (le * mid-label peut etre ignore sur certains builds).
+    snprintf(line, sizeof(line), "%s t-dce9377b-lp1.lp1.t.npln.srv.nintendo.net\n", ip); EMIT_H(line);
+    snprintf(line, sizeof(line), "%s t-adf89f68-lp1.lp1.t.npln.srv.nintendo.net\n", ip); EMIT_H(line);
+    snprintf(line, sizeof(line), "%s gw.hac.lp1.vermillion.srv.nintendo.net\n", ip);     EMIT_H(line);
+    snprintf(line, sizeof(line), "%s val.hac.lp1.penne.srv.nintendo.net\n", ip);         EMIT_H(line);
+    snprintf(line, sizeof(line), "%s fro-3.hac.lp1.penne.srv.nintendo.net\n", ip);       EMIT_H(line);
+    // dragons : celui-la n'est couvert par AUCUN wildcard existant — il finit par
+    // .nintendo.net et non par srv.nintendo.net, et il n'y a pas de *.nintendo.net
+    // generique (retire en v3.0.2 pour op2). Sans cette ligne il part chez Nintendo.
+    snprintf(line, sizeof(line), "%s dragons.hac.lp1.dragons.nintendo.net\n", ip);       EMIT_H(line);
     // *.op2.nintendo.net RETIRÉ (v3.0.2): trop large — attrapait des sous-domaines
     // op2 non gérés par le VPS (authorization server, entitlement check) → 404 → erreurs
     // 2219-4001 (ACNH). On garde capi.lp1.op2.nintendo.net (ligne au-dessus) qui suffit.

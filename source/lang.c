@@ -388,6 +388,40 @@ static const char *s_strings[STR_COUNT][4] = {
                                           "No se puede escribir en la SD.",
                                           "Nao e possivel gravar no cartao SD.",
                                           "Impossible d'ecrire sur la carte SD." },
+
+    // --- Nouveau cromo : rail + barre de boutons. Volontairement courts —
+    //     une entree de rail ou un libelle de bouton se lit d'un coup d'oeil,
+    //     pas en phrase. ---
+    [STR_RAIL_MODE]   = { "Mode",       "Modo",       "Modo",       "Mode" },
+    [STR_RAIL_S2]     = { "Splatoon 2", "Splatoon 2", "Splatoon 2", "Splatoon 2" },
+    [STR_RAIL_FLAG]   = { "Country",    "Pais",       "Pais",       "Pays" },
+    [STR_RAIL_SSBU]   = { "Smash",      "Smash",      "Smash",      "Smash" },
+    [STR_RAIL_LANG]   = { "Language",   "Idioma",     "Idioma",     "Langue" },
+    [STR_BADGE_ACTIVE]= { "Active",     "Activo",     "Ativo",      "Actif" },
+    [STR_HINT_APPLY]  = { "Apply",      "Aplicar",    "Aplicar",    "Appliquer" },
+    [STR_HINT_EXIT]   = { "Exit",       "Salir",      "Sair",       "Quitter" },
+    [STR_HINT_BACK]   = { "Back",       "Volver",     "Voltar",     "Retour" },
+    [STR_HINT_CHANGE] = { "Change",     "Cambiar",    "Alterar",    "Modifier" },
+    [STR_HINT_OPEN]   = { "Open",       "Abrir",      "Abrir",      "Ouvrir" },
+    // --- Section SSBU ---
+    [STR_S2_TITLE_MOD]       = { "Mod", "Mod", "Mod", "Mod" },
+    [STR_SSBU_APPLIES]       = { "Applies on reboot in Nextendo mode",
+                                 "Se aplica al reiniciar en modo Nextendo",
+                                 "Aplica ao reiniciar no modo Nextendo",
+                                   "S'applique au redemarrage en mode Nextendo" },
+    [STR_SSBU_INSTALLED]     = { "Installed", "Instalado", "Instalado", "Installe" },
+    [STR_SSBU_NOT_INSTALLED] = { "Not installed", "No instalado", "Nao instalado", "Non installe" },
+    [STR_SSBU_INSTALL]       = { "Install", "Instalar", "Instalar", "Installer" },
+    [STR_SSBU_UNINSTALL]     = { "Uninstall", "Desinstalar", "Desinstalar", "Desinstaller" },
+    [STR_SSBU_OC]            = { "Mod overclock", "Overclock del mod", "Overclock do mod", "Overclock du mod" },
+    [STR_SSBU_OC_ON_DESC]    = { "Turn it off if you use Horizon OC or sys-clk",
+                                 "Desactivalo si usas Horizon OC o sys-clk",
+                                 "Desative se voce usa Horizon OC ou sys-clk",
+                                   "Coupe-le si tu utilises Horizon OC ou sys-clk" },
+    [STR_SSBU_OC_OFF_DESC]   = { "Compatible with Horizon OC / sys-clk",
+                                 "Compatible con Horizon OC / sys-clk",
+                                 "Compativel com Horizon OC / sys-clk",
+                                   "Compatible avec Horizon OC / sys-clk" },
 };
 
 // ============================================================

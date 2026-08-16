@@ -22,9 +22,9 @@
 #define AUDIO_H
 #include <switch.h>
 
-bool audio_init(void);   // demarre la BGM en boucle (true si lancee)
-void audio_exit(void);   // arrete + libere
-void audio_egg_play(void);  // joue l'audio de l'easter egg (pause BGM)
-void audio_egg_stop(void);  // arrete l'audio egg, reprend BGM
+// BGM en boucle depuis romfs:/bgm.mp3 (mpg123 + audout). Non-fatal : renvoie
+// false si l'audio ou le fichier manque, l'app continue en silence.
+bool audio_init(void);
+void audio_exit(void);   // arrete le thread de decodage, puis libere
 
 #endif // AUDIO_H
