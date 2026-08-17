@@ -296,14 +296,28 @@
 //           srv.nintendo.net, donc le wildcard *srv ne le rattrapait pas non plus.
 //           Resultat cote joueur : le tenant repondait (comptes, amis, horaires) mais
 //           aucune partie ne demarrait. On ajoute *.npln.nintendo.net + l'hote explicite.
-#define NEXTENDO_BUILD 53
+// build 54 : v3.3.2. TELEMETRIE : le mode NEXTENDO ne fusionnait pas les entrees
+//           par defaut d'Atmosphere. On appelait iniSetDnsMitm(true, FALSE) — le
+//           second argument est add_defaults_to_dns_hosts — donc la table native
+//           d'Atmosphere etait desactivee et le seul blocage etait nos deux lignes
+//           receive-%.dg/er. Sur le mode ou les gens jouent, precisement.
+//           Le mode NINTENDO fait (true, true) depuis le build 10, avec un commentaire
+//           expliquant pourquoi : ne pas maintenir notre propre liste, laisser celle
+//           d'Atmosphere qui est suivie en amont et ne derivera pas. Ce raisonnement
+//           n'avait jamais ete reporte dans apply_nextendo. Corrige.
+//           Signale publiquement par TherealJaw, qui avait raison. Verifie avant de
+//           corriger : les defauts d'Atmosphere ne couvrent que les serveurs de
+//           telemetrie (receive-%), jamais accounts.nintendo.com ni les hotes de jeu,
+//           donc aucun risque qu'ils ecrasent nos redirections. Le seul recouvrement
+//           est receive-%, ou les deux valeurs bloquent (0.0.0.0 / 127.0.0.1).
+#define NEXTENDO_BUILD 54
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
 // NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 3
-#define NEXTENDO_VERSION_PATCH 1
+#define NEXTENDO_VERSION_PATCH 2
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo

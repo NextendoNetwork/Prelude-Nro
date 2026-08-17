@@ -552,7 +552,17 @@ bool nextendo_apply_nextendo_ip(const char *ip) {
     bool a = writeTextFile(NEXTENDO_HOSTS_SYSMMC, hosts);
     bool b = writeTextFile(NEXTENDO_HOSTS_EMUMMC, hosts);
     free(hosts);
-    bool i = iniSetDnsMitm(true, false);
+    // add_defaults_to_dns_hosts = 1, comme en mode NINTENDO. C'ETAIT A 0 : en mode
+    // NEXTENDO la table de telemetrie native d'Atmosphere n'etait donc PAS fusionnee,
+    // et le seul blocage etait nos deux lignes receive-%.dg/er. Signale publiquement
+    // par TherealJaw, verifie, et il avait raison : le raisonnement du build 10 (ne pas
+    // maintenir notre propre liste, laisser celle d'Atmosphere qui est suivie en amont)
+    // n'avait jamais ete reporte de apply_nintendo vers apply_nextendo.
+    // Pas de conflit avec nos redirections : les defauts d'Atmosphere ne couvrent que
+    // les serveurs de telemetrie (receive-%), qu'on null-route deja, et jamais
+    // accounts.nintendo.com ni les hotes de jeu. Le seul recouvrement est receive-%,
+    // ou les deux valeurs bloquent (0.0.0.0 chez nous, 127.0.0.1 chez eux).
+    bool i = iniSetDnsMitm(true, true);
     bool p = iniSetBlankProdinfoEmummc(false);
     if (!p) nextendo_trace("29 WARN: iniSetBlankProdinfoEmummc(false) a echoue -> risque 2123-0011");
     nextendo_purge_leaks();
