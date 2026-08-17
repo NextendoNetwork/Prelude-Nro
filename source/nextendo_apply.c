@@ -151,6 +151,16 @@ char *nextendo_hosts_build(const char *ip) {
     // .nintendo.net et non par srv.nintendo.net, et il n'y a pas de *.nintendo.net
     // generique (retire en v3.0.2 pour op2). Sans cette ligne il part chez Nintendo.
     snprintf(line, sizeof(line), "%s dragons.hac.lp1.dragons.nintendo.net\n", ip);       EMIT_H(line);
+    // gamesync : le SESSION HOST de Splatoon 3, celui qui porte le lobby lui-meme
+    // (stream bidirectionnel KeepUserSession sur TCP/7575, :authority=gamesync...).
+    // Meme piege que dragons : il finit par npln.nintendo.net et NON par
+    // srv.nintendo.net, donc le wildcard *srv ne le prend pas. Il n'apparait dans
+    // aucune regle traefik non plus, parce que c'est un port TCP direct de l'hote
+    // (nplns3-gamesync ecoute sur 7575) et pas un service derriere le proxy — c'est
+    // pour ca qu'il avait ete manque en v3.3.0. Sans ces lignes le tenant repond
+    // mais le lobby ne se connecte jamais.
+    snprintf(line, sizeof(line), "%s    *.npln.nintendo.net\n", ip);                     EMIT_H(line);
+    snprintf(line, sizeof(line), "%s gamesync.npln.nintendo.net\n", ip);                 EMIT_H(line);
     // *.op2.nintendo.net RETIRÉ (v3.0.2): trop large — attrapait des sous-domaines
     // op2 non gérés par le VPS (authorization server, entitlement check) → 404 → erreurs
     // 2219-4001 (ACNH). On garde capi.lp1.op2.nintendo.net (ligne au-dessus) qui suffit.

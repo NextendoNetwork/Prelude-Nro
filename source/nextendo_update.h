@@ -247,14 +247,63 @@
 //           to the real Nintendo.
 //           Note: an existing entry has val.hac.penne.srv.nintendo.net without the lp1
 //           label; the live route is val.hac.lp1.penne.srv.nintendo.net. Both are kept.
-#define NEXTENDO_BUILD 52
+// build 53 : v3.3.1. Splatoon 3 : le PATCH CERTIFICAT, sans lequel rien ne marche.
+//           v3.3.0 annoncait le support Splatoon 3 en n'ajoutant que des hosts. Ca ne
+//           pouvait pas suffire : le client NPLN de Splatoon 3 lie STATIQUEMENT son
+//           propre BoringSSL et pilote TLS lui-meme sur des sockets Bsd bruts. Il ne
+//           passe JAMAIS par le service ssl: de la console — ni sur hardware reel, ni
+//           en emulation. Donc disable_ca_verification, qui patche le module SSL du
+//           systeme, n'est jamais consulte par ce jeu : quoi que dise le DNS, le jeu
+//           valide notre certificat contre son propre jeu epingle, dans sa propre pile
+//           TLS, et coupe des le ClientHello.
+//           Le contournement doit donc atterrir dans le NSO du jeu. On embarque les
+//           deux patches IPS32 de Kazu dans exefs_patches (deja deployes par
+//           copyTreeRomfs, et retires au retour en mode Nintendo comme le reste) :
+//             s3certbypass  19 o, 1 record  -> MOV W10,#0 a 0x157B20 (check cert)
+//             s3peername    29 o, 2 records -> NOP a 0x14E1B0 + MOV W20,WZR a 0x14DD80
+//           Build ids : 6830B3A1... = 11.2.0, 726D2B88... = 11.0.0. Le certbypass est
+//           BYTE-IDENTIQUE pour les deux (le code n'a pas bouge entre les versions,
+//           seul le nom de fichier change) ; s3peername n'existe que pour 11.2.0.
+//
+//           /!\ VERSION-SPECIFIQUE, et le mode d'echec est silencieux. Atmosphere
+//           matche sur le build id du NOM DE FICHIER : une MAJ du jeu produit un
+//           nouveau build id et le patch est simplement IGNORE — pas d'erreur, pas de
+//           log, juste l'ecran de chargement. C'est deja arrive : un patch construit
+//           sur un dump 11.0.0 dormait sur une console 11.2.0 pendant qu'on accusait
+//           le handshake TLS. Les offsets INTERNES sont un risque separe du nom : ils
+//           n'ont pas bouge entre 11.0.0 et 11.2.0, rien ne garantit que ca tienne a
+//           la prochaine MAJ. Attendu en cas de MAJ Splatoon 3 : les patches cessent
+//           de s'appliquer, tout le monde reste sur l'ecran de chargement, et il faut
+//           un nouveau dump pour les reconstruire.
+//
+//           Cote hosts on ajoute quand meme gamesync.npln.nintendo.net (+ le wildcard
+//           *.npln.nintendo.net) : il finit par npln.nintendo.net et non par
+//           srv.nintendo.net, donc le wildcard *srv ne le prend pas. MAIS ce n'etait
+//           PAS le bloqueur : d'apres Kazu le client ne resout pas ce nom, le serveur
+//           lui donne une adresse et un port explicites dans le document de session et
+//           le token ; le hostname ne sert qu'a l'authority et au SNI. On le garde par
+//           completude, pas comme correctif.
+//           (ancienne entree de ce build, conservee pour l'historique :)
+//           HOTFIX Splatoon 3 : le lobby ne se connectait jamais.
+//           v3.3.0 a ajoute le tenant (t-*.lp1.t.npln.srv...) mais pas le SESSION
+//           HOST, qui est un service separe portant le lobby lui-meme : stream
+//           bidirectionnel KeepUserSession sur TCP/7575, :authority =
+//           gamesync.npln.nintendo.net.
+//           Pourquoi il avait ete manque : les autres hotes NPLN ont ete tires des
+//           regles HostSNI de traefik, or gamesync n'y figure pas — c'est un port TCP
+//           direct de l'hote (nplns3-gamesync ecoute sur 7575), pas un service derriere
+//           le proxy. Et comme dragons, il finit par npln.nintendo.net et non par
+//           srv.nintendo.net, donc le wildcard *srv ne le rattrapait pas non plus.
+//           Resultat cote joueur : le tenant repondait (comptes, amis, horaires) mais
+//           aucune partie ne demarrait. On ajoute *.npln.nintendo.net + l'hote explicite.
+#define NEXTENDO_BUILD 53
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
 // NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 3
-#define NEXTENDO_VERSION_PATCH 0
+#define NEXTENDO_VERSION_PATCH 1
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo
