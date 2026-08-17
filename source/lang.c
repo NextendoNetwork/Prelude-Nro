@@ -53,10 +53,10 @@ static const char *s_strings[STR_COUNT][4] = {
                                    "Télécharge le calendrier des modes de Splatoon 2 et l'installe dans le jeu." },
 
     // --- Help lines ---
-    [STR_HELP_MODE]          = { "A: switch mode       < >: change choice       B: quit",
-                                 "A: cambiar modo       < >: cambiar eleccion       B: salir",
-                                 "A: mudar modo         < >: mudar escolha          B: sair",
-                                   "A : changer de mode       < > : changer de choix       B : quitter" },
+    [STR_HELP_MODE]          = { "A: switch mode       < >: change choice       X: sync time       B: quit",
+                                 "A: cambiar modo       < >: cambiar eleccion       X: sinc. hora       B: salir",
+                                 "A: mudar modo         < >: mudar escolha          X: sinc. hora       B: sair",
+                                   "A : changer de mode       < > : changer de choix       X : heure       B : quitter" },
     [STR_HELP_S2]            = { "A: install schedule       < >: change choice       B: quit",
                                  "A: instalar horario       < >: cambiar eleccion       B: salir",
                                  "A: instalar cronograma    < >: mudar escolha          B: sair",
@@ -388,6 +388,28 @@ static const char *s_strings[STR_COUNT][4] = {
                                           "No se puede escribir en la SD.",
                                           "Nao e possivel gravar no cartao SD.",
                                           "Impossible d'ecrire sur la carte SD." },
+
+    // --- Time sync progress / result ---
+    [STR_STATUS_SYNC_TIME]            = { "Synchronizing time...",
+                                          "Sincronizando hora...",
+                                          "Sincronizando hora...",
+                                          "Synchronisation de l'heure..." },
+    [STR_STATUS_TIME_OK]              = { "Time synchronized",
+                                          "Hora sincronizada",
+                                          "Hora sincronizada",
+                                          "Heure synchronisee" },
+    [STR_STATUS_TIME_OK_DESC]         = { "The console time has been successfully synchronized.",
+                                          "La hora de la consola se ha sincronizado correctamente.",
+                                          "A hora do console foi sincronizada com sucesso.",
+                                          "L'heure de la console a ete synchronisee avec succes." },
+    [STR_STATUS_TIME_FAIL]            = { "Synchronization error",
+                                          "Error de sincronizacion",
+                                          "Erro de sincronizacao",
+                                          "Erreur de synchronisation" },
+    [STR_STATUS_TIME_FAIL_DESC]       = { "Could not synchronize time (check connection).",
+                                          "No se pudo sincronizar la hora (verifica la conexion).",
+                                          "Nao foi possivel sincronizar a hora (verifique a conexao).",
+                                          "Impossible de synchroniser l'heure (verifier la connexion)." },
 
     // --- Nouveau cromo : rail + barre de boutons. Volontairement courts —
     //     une entree de rail ou un libelle de bouton se lit d'un coup d'oeil,
