@@ -21,6 +21,7 @@
 // ============================================================
 #include <switch.h>
 #include <string.h>
+#include <strings.h>   // strcasecmp (extension .nro insensible a la casse)
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -33,8 +34,42 @@
 #define GH_API_PATH  "/repos/NextendoNetwork/Prelude-Nro/releases/latest"
 #define GH_API_PORT  443
 
-#define NRO_PATH     "sdmc:/switch/nextendo.nro"
-#define NRO_TMP      "sdmc:/switch/nextendo.nro.new"
+// --- Chemin du .nro : celui qu'on EXECUTE, pas un chemin devine. ---
+//  L'updater ecrivait TOUJOURS dans sdmc:/switch/nextendo.nro. Pour tous ceux dont le
+//  Prelude vit ailleurs (autre nom, sous-dossier, racine de la carte), la mise a jour
+//  deposait donc un fichier EN PLUS : l'ancien restait celui qu'ils lancaient, et la
+//  carte se retrouvait avec deux versions. C'est la cause des DEUX rapports recus —
+//  « l'updater ne marche pas » (on relance l'ancien) et « il devrait remplacer Prelude »
+//  (les deux sont conservees). Le seul utilisateur pour qui ca marchait etait celui dont
+//  le chemin coincidait avec la constante.
+//  hbmenu passe le chemin REEL du .nro dans argv[0] : on ecrit LA, donc le fichier
+//  remplace est exactement celui que l'utilisateur vient de lancer.
+#define LEGACY_NRO_FILE "sdmc:/switch/nextendo.nro"
+#define LEGACY_TMP_FILE "sdmc:/switch/nextendo.nro.new"
+
+static char g_self_nro[512] = {0};
+static char g_self_tmp[520] = {0};
+
+void nextendo_update_set_self_path(const char *argv0) {
+    // Sans argv exploitable on garde le chemin historique : mieux vaut l'ancien
+    // comportement qu'une ecriture a un endroit invente.
+    if (!argv0 || !*argv0) return;
+    size_t n = strlen(argv0);
+    if (n < 5 || n >= sizeof(g_self_nro)) return;
+    if (strcasecmp(argv0 + n - 4, ".nro") != 0) return;
+    if (strncmp(argv0, "sdmc:/", 6) == 0)
+        snprintf(g_self_nro, sizeof(g_self_nro), "%s", argv0);
+    else if (argv0[0] == '/')
+        snprintf(g_self_nro, sizeof(g_self_nro), "sdmc:%s", argv0);
+    else
+        return;
+    // Le fichier temporaire va A COTE de la cible : rename() ne traverse alors aucune
+    // frontiere et le .new ne traine pas dans un dossier qui n'est pas le sien.
+    snprintf(g_self_tmp, sizeof(g_self_tmp), "%s.new", g_self_nro);
+}
+
+static const char *nroPath(void) { return g_self_nro[0] ? g_self_nro : LEGACY_NRO_FILE; }
+static const char *nroTmp(void)  { return g_self_tmp[0] ? g_self_tmp : LEGACY_TMP_FILE; }
 
 static char g_download_url[512] = {0};
 static long g_download_size = 0;
@@ -126,10 +161,10 @@ nextendo_update_result nextendo_update_apply(long expectedSize) {
     if (g_download_url[0] == '\0') return NUP_NET_FAIL;
     long expected = expectedSize > 0 ? expectedSize : g_download_size;
 
-    FILE *f = fopen(NRO_TMP, "wb");
+    FILE *f = fopen(nroTmp(), "wb");
     if (!f) {
         mkdir("sdmc:/switch", 0777);
-        f = fopen(NRO_TMP, "wb");
+        f = fopen(nroTmp(), "wb");
     }
     if (!f) return NUP_WRITE_FAIL;
 
@@ -140,7 +175,7 @@ nextendo_update_result nextendo_update_apply(long expectedSize) {
     char host[256] = {0};
     char path[1024] = {0};
     if (sscanf(g_download_url, "https://%255[^/]%1023s", host, path) < 2) {
-        sslExit(); fclose(f); remove(NRO_TMP); socketExit(); return NUP_NET_FAIL;
+        sslExit(); fclose(f); remove(nroTmp()); socketExit(); return NUP_NET_FAIL;
     }
 
     int status = 0;
@@ -149,28 +184,37 @@ nextendo_update_result nextendo_update_apply(long expectedSize) {
     sslExit();
     socketExit();
 
-    if (len == -2) { remove(NRO_TMP); return NUP_WRITE_FAIL; }
-    if (len < 0)   { remove(NRO_TMP); return NUP_NET_FAIL; }
-    if (status != 200 || len < 4096) { remove(NRO_TMP); return NUP_NET_FAIL; }
-    if (expected > 0 && len != expected) { remove(NRO_TMP); return NUP_SIZE_FAIL; }
+    if (len == -2) { remove(nroTmp()); return NUP_WRITE_FAIL; }
+    if (len < 0)   { remove(nroTmp()); return NUP_NET_FAIL; }
+    if (status != 200 || len < 4096) { remove(nroTmp()); return NUP_NET_FAIL; }
+    if (expected > 0 && len != expected) { remove(nroTmp()); return NUP_SIZE_FAIL; }
     fsdevCommitDevice("sdmc");
 
     // Replace the old .nro (current runs from RAM, safe to overwrite).
     // rename() can fail on FAT32; fallback to copy.
-    remove(NRO_PATH);
-    if (rename(NRO_TMP, NRO_PATH) != 0) {
-        FILE *src = fopen(NRO_TMP, "rb");
-        if (!src) { remove(NRO_TMP); return NUP_WRITE_FAIL; }
-        FILE *dst = fopen(NRO_PATH, "wb");
-        if (!dst) { fclose(src); remove(NRO_TMP); return NUP_WRITE_FAIL; }
+    remove(nroPath());
+    if (rename(nroTmp(), nroPath()) != 0) {
+        FILE *src = fopen(nroTmp(), "rb");
+        if (!src) { remove(nroTmp()); return NUP_WRITE_FAIL; }
+        FILE *dst = fopen(nroPath(), "wb");
+        if (!dst) { fclose(src); remove(nroTmp()); return NUP_WRITE_FAIL; }
         char cbuf[16384];
         size_t n;
         bool ok = true;
         while ((n = fread(cbuf, 1, sizeof(cbuf), src)) > 0)
             if (fwrite(cbuf, 1, n, dst) != n) { ok = false; break; }
         fclose(src); fclose(dst);
-        remove(NRO_TMP);
+        remove(nroTmp());
         if (!ok) return NUP_WRITE_FAIL;
+    }
+
+    // Une mise a jour PRECEDENTE (avant ce correctif) a pu deposer une copie a l'ancien
+    // emplacement fixe. Si ce n'est pas le fichier qu'on vient de remplacer, c'est un
+    // orphelin que nous avons cree nous-memes, et il ne sert qu'a laisser croire qu'il
+    // reste deux versions installees. On ne supprime QUE ce chemin-la, jamais un autre.
+    if (strcmp(nroPath(), LEGACY_NRO_FILE) != 0) {
+        remove(LEGACY_NRO_FILE);
+        remove(LEGACY_TMP_FILE);
     }
 
     fsdevCommitDevice("sdmc");

@@ -41,6 +41,7 @@ enum {
     SCREEN_PICKER, SCREEN_S2_INFO, SCREEN_S2_PROGRESS, SCREEN_S2_RESULT,
     SCREEN_UPD_CONFIRM, SCREEN_UPD_PROGRESS, SCREEN_UPD_RESULT,
     SCREEN_FLAG_MENU, SCREEN_FLAG_PROGRESS, SCREEN_FLAG_RESULT,
+    SCREEN_BACKUP_ASK, SCREEN_USEBAK_ASK,
     // Smash et Langue ne sont plus des ecrans : leur contenu vit dans le
     // panneau du rail. Ne restent modaux que confirmation / progression /
     // resultat, et la liste de 110 pays, trop longue pour un panneau.
@@ -137,6 +138,11 @@ static void bootWorker(void *arg) {
 }
 
 int main(int argc, char **argv) {
+    // hbmenu passe le chemin du .nro lance dans argv[0]. L'updater doit remplacer CE
+    // fichier : sans ca il ecrivait a un emplacement fixe, la mise a jour se deposait a
+    // cote, et l'utilisateur relancait indefiniment l'ancienne version.
+    nextendo_update_set_self_path((argc > 0 && argv) ? argv[0] : NULL);
+
     romfsInit();
     audio_init();
     lang_init();
@@ -174,6 +180,11 @@ int main(int argc, char **argv) {
     int  paneSel = 0;           // ligne du panneau
     bool paneFocus = false;     // false = les fleches agissent sur le rail
     int  screen = SCREEN_PICKER;
+    // UNE SEULE FOIS, au tout premier lancement : on propose de sauvegarder les hosts
+    // dns.mitm que l'utilisateur avait AVANT nous. C'est la SEULE occasion de le faire —
+    // des qu'un mode est applique, les fichiers d'origine sont ecrases et il n'y a plus
+    // rien a sauver. Une fois la question posee, elle ne revient jamais.
+    if (nextendo_backup_prompt_needed()) screen = SCREEN_BACKUP_ASK;
     int  state  = 0;
     char status[160] = {0};
     char rTitle[64] = {0}, rMsg[192] = {0};
@@ -385,6 +396,39 @@ int main(int argc, char **argv) {
                     if (!tracedConfirm) { nextendo_trace("18b ui_draw_confirm rendu ok"); tracedConfirm = true; }
                 }
             }
+
+        } else if (screen == SCREEN_BACKUP_ASK) {
+            if (k & HidNpadButton_A) {
+                int nb = nextendo_hosts_backup_create();
+                snprintf(status, sizeof(status), "%s",
+                         lang_str(nb ? STR_BACKUP_SAVED : STR_BACKUP_NONE));
+                // Sans copie, la seconde question n'a pas d'objet : on ne demande pas
+                // a l'utilisateur quoi faire d'un fichier qui n'existe pas.
+                if (nb) {
+                    screen = SCREEN_USEBAK_ASK;
+                } else {
+                    nextendo_backup_prompt_done();
+                    screen = SCREEN_PICKER;
+                }
+            } else if (k & (HidNpadButton_B | HidNpadButton_Plus)) {
+                nextendo_backup_prompt_done();
+                screen = SCREEN_PICKER;
+            }
+            if (screen == SCREEN_BACKUP_ASK)
+                ui_draw_question(lang_str(STR_BACKUP_TITLE),
+                                 lang_str(STR_BACKUP_BODY1),
+                                 lang_str(STR_BACKUP_BODY2));
+
+        } else if (screen == SCREEN_USEBAK_ASK) {
+            if (k & (HidNpadButton_A | HidNpadButton_B | HidNpadButton_Plus)) {
+                nextendo_backup_set_use_for_nintendo((k & HidNpadButton_A) != 0);
+                nextendo_backup_prompt_done();
+                screen = SCREEN_PICKER;
+            }
+            if (screen == SCREEN_USEBAK_ASK)
+                ui_draw_question(lang_str(STR_USEBAK_TITLE),
+                                 lang_str(STR_USEBAK_BODY1),
+                                 lang_str(STR_USEBAK_BODY2));
 
         } else if (screen == SCREEN_S2_INFO) {
             if (k & (HidNpadButton_B | HidNpadButton_Plus)) {

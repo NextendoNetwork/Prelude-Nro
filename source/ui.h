@@ -68,4 +68,8 @@ void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch);
 // currentCode = code 2 lettres installe (ou "" si aucun).
 void ui_draw_flag_menu(int sel, int scroll, const char *currentCode);
 
+// Question OUI/NON generique posee par-dessus l'ecran courant (A = oui, B = non).
+// Utilisee au premier lancement pour la sauvegarde des hosts de l'utilisateur.
+void ui_draw_question(const char *title, const char *l1, const char *l2);
+
 #endif // UI_H

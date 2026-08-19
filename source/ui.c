@@ -525,6 +525,46 @@ void ui_draw_confirm(int selection, bool warnNoEmummc) {
     framebufferEnd(&s_fb);
 }
 
+// ------- Question OUI/NON (modale) -------
+// Meme traitement que ui_draw_confirm : voile par-dessus l'ecran courant + carte
+// centree, pour que ca se lise comme une question posee SUR l'ecran et non comme
+// une page de plus dans la navigation.
+void ui_draw_question(const char *title, const char *l1, const char *l2) {
+    u32 st;
+    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
+
+    chromeClear(b, st);
+    chromeHeader(b, st, lang_str(STR_TITLE_PRELUDE), NULL);
+
+    u32 sw = st / sizeof(u32);
+    for (int y = 0; y < FB_H; y++)
+        for (int x = 0; x < FB_W; x++) {
+            u32 d = b[y * sw + x];
+            b[y * sw + x] = blendPix(d, 0, 0, 0, g_theme == THEME_LIGHT ? 90 : 130);
+        }
+
+    int dw = 820, dh = 300;
+    int dx = (FB_W - dw) / 2, dy = (FB_H - dh) / 2;
+    roundedCard(b, st, dx, dy, dw, dh, RADIUS + 6, packColor(theme_pane()));
+
+    int y = dy + SP_XL;
+    drawCF(b, st, s_semi, FB_W / 2, y, FS_BIG, packColor(theme_text()), title);
+    y += SP_LG;
+    if (l1) drawCF(b, st, s_reg, FB_W / 2, y, FS_BODY, packColor(theme_text2()), l1);
+    y += SP_MD + SP_XS;
+    if (l2) drawCF(b, st, s_reg, FB_W / 2, y, FS_CAP, packColor(theme_text2()), l2);
+
+    int ay = dy + dh - 64;
+    fillRect(b, st, dx, ay, dw, 2, packColor(theme_sep()));
+    fillRect(b, st, dx + dw / 2, ay, 2, 64, packColor(theme_sep()));
+    drawCF(b, st, s_reg,  dx + dw / 4,     ay + 42, FS_BODY,
+           packColor(theme_text2()), lang_str(STR_ASK_B_NO));
+    drawCF(b, st, s_semi, dx + dw * 3 / 4, ay + 42, FS_BODY,
+           packColor(C_CYAN), lang_str(STR_ASK_A_YES));
+
+    framebufferEnd(&s_fb);
+}
+
 // ------- Ecran de progression -------
 void ui_draw_progress(const char *line) {
     u32 st;

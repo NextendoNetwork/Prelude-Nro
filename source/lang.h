@@ -179,6 +179,18 @@ typedef enum {
     STR_SSBU_OC_ON_DESC,              // "Turn it off if you use Horizon OC / sys-clk"
     STR_SSBU_OC_OFF_DESC,             // "Compatible with Horizon OC / sys-clk"
 
+    // --- Sauvegarde des hosts de l'utilisateur (premier lancement / mise a jour) ---
+    STR_BACKUP_TITLE,           // "Back up your current DNS files?"
+    STR_BACKUP_BODY1,           // ce que Prelude va ecraser
+    STR_BACKUP_BODY2,           // ou la copie est rangee
+    STR_USEBAK_TITLE,           // "Use that backup for Nintendo mode?"
+    STR_USEBAK_BODY1,
+    STR_USEBAK_BODY2,
+    STR_ASK_A_YES,              // "A: Yes"
+    STR_ASK_B_NO,               // "B: No"
+    STR_BACKUP_SAVED,           // toast/status apres copie
+    STR_BACKUP_NONE,            // rien a copier (carte vierge, ou deja en mode Nextendo)
+
     STR_COUNT
 } StringID;
 
