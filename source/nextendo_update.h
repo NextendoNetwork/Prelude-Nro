@@ -361,14 +361,31 @@
 //           ce qui repare les installations ou la mauvaise copie existe deja, sans rien
 //           demander a personne. Une copie invalide n'est simplement jamais restauree.
 //           Rien d'autre ne change par rapport au 55.
-#define NEXTENDO_BUILD 56
+// build 57 : v3.3.5. L'updater du 55/56 pouvait echouer sur « impossible d'ecrire sur
+//           la SD » (rapporte par Andrei, depuis la 3.3.3). Le 55 a fait passer la cible
+//           de « un chemin fixe » a « le fichier qu'on execute ». Le code disait que
+//           l'ecrasement etait sans risque parce qu'on tourne depuis la RAM : c'etait
+//           gratuit tant que le fichier remplace n'etait PAS celui qu'on executait, et ca
+//           a cesse de l'etre precisement avec ce changement. Selon le chargeur, le .nro
+//           en cours peut rester ouvert — remove() echoue, rename() ne peut pas ecraser
+//           sur FAT32, l'ouverture en ecriture est refusee, et l'utilisateur se retrouve
+//           avec une erreur alors que la mise a jour est deja telechargee.
+//           Trois tentatives au lieu d'une : ecrasement EN PLACE sans supprimer d'abord
+//           (passe si le fichier resiste a la suppression mais pas a l'ecriture), puis
+//           remove+rename, puis en dernier recours l'ancien emplacement fixe. Ce dernier
+//           recours recree le doublon que le 55 corrigeait : c'est assume, une mise a
+//           jour installee ailleurs vaut mieux qu'une mise a jour perdue.
+//           L'updater ecrit desormais dans prelude_trace.txt ce qu'il a fait (60 a 64) :
+//           il n'avait AUCUNE trace, et ce diagnostic-ci a du etre deduit au lieu d'etre
+//           lu. La prochaine fois, le fichier de l'utilisateur repondra tout seul.
+#define NEXTENDO_BUILD 57
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
 // NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 3
-#define NEXTENDO_VERSION_PATCH 4
+#define NEXTENDO_VERSION_PATCH 5
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo

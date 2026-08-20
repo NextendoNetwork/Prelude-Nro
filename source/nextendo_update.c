@@ -28,6 +28,7 @@
 
 #include "nextendo_update.h"
 #include "nextendo_net.h"
+#include "nextendo_apply.h"   // nextendo_trace : diagnostic de l'updater depuis la carte
 
 // GitHub API for latest release
 #define GH_API_HOST  "api.github.com"
@@ -70,6 +71,24 @@ void nextendo_update_set_self_path(const char *argv0) {
 
 static const char *nroPath(void) { return g_self_nro[0] ? g_self_nro : LEGACY_NRO_FILE; }
 static const char *nroTmp(void)  { return g_self_tmp[0] ? g_self_tmp : LEGACY_TMP_FILE; }
+
+// Copie src -> dst en ECRASANT dst sans le supprimer d'abord. Renvoie false des que
+// l'ouverture ou une ecriture echoue, en laissant le soin a l'appelant d'essayer autre
+// chose : c'est la brique des trois tentatives de remplacement ci-dessous.
+static bool copyOver(const char *src, const char *dst) {
+    FILE *in = fopen(src, "rb");
+    if (!in) return false;
+    FILE *out = fopen(dst, "wb");
+    if (!out) { fclose(in); return false; }
+    char cbuf[16384];
+    size_t n;
+    bool ok = true;
+    while ((n = fread(cbuf, 1, sizeof(cbuf), in)) > 0)
+        if (fwrite(cbuf, 1, n, out) != n) { ok = false; break; }
+    fclose(in);
+    if (fclose(out) != 0) ok = false;   // erreur d'ecriture differee (carte pleine)
+    return ok;
+}
 
 static char g_download_url[512] = {0};
 static long g_download_size = 0;
@@ -190,22 +209,59 @@ nextendo_update_result nextendo_update_apply(long expectedSize) {
     if (expected > 0 && len != expected) { remove(nroTmp()); return NUP_SIZE_FAIL; }
     fsdevCommitDevice("sdmc");
 
-    // Replace the old .nro (current runs from RAM, safe to overwrite).
-    // rename() can fail on FAT32; fallback to copy.
-    remove(nroPath());
-    if (rename(nroTmp(), nroPath()) != 0) {
-        FILE *src = fopen(nroTmp(), "rb");
-        if (!src) { remove(nroTmp()); return NUP_WRITE_FAIL; }
-        FILE *dst = fopen(nroPath(), "wb");
-        if (!dst) { fclose(src); remove(nroTmp()); return NUP_WRITE_FAIL; }
-        char cbuf[16384];
-        size_t n;
-        bool ok = true;
-        while ((n = fread(cbuf, 1, sizeof(cbuf), src)) > 0)
-            if (fwrite(cbuf, 1, n, dst) != n) { ok = false; break; }
-        fclose(src); fclose(dst);
+    // --- Remplacement du .nro. ---
+    //  Le build 55 a fait passer la cible de « un fichier a un chemin fixe » a « le
+    //  fichier qu'on est en train d'executer ». Le commentaire d'origine disait que
+    //  l'ecrasement etait sans risque parce que le code tourne depuis la RAM ; c'etait
+    //  gratuit tant que le fichier remplace n'etait PAS celui qu'on executait, et ca a
+    //  cesse de l'etre. Selon le chargeur de homebrew, le .nro en cours peut rester
+    //  ouvert : remove() echoue, rename() ne peut pas ecraser sur FAT32, l'ouverture en
+    //  ecriture est refusee, et l'utilisateur voit « impossible d'ecrire sur la SD »
+    //  avec une mise a jour pourtant deja telechargee. Rapporte par Andrei depuis 3.3.3.
+    //
+    //  On ne renonce donc plus a la premiere resistance : ecrasement en place, puis
+    //  remove+rename, puis en dernier recours l'ancien emplacement fixe. Ce dernier
+    //  recours recree le doublon que le build 55 corrigeait — c'est assume : une mise a
+    //  jour installee ailleurs vaut mieux qu'une mise a jour perdue, et la trace dit
+    //  exactement ce qui s'est passe.
+    bool placed = false;
+
+    // 1) Ecrasement EN PLACE, sans supprimer d'abord : si le fichier est verrouille en
+    //    suppression mais ouvrable en ecriture, ce chemin passe la ou l'ancien echouait.
+    if (copyOver(nroTmp(), nroPath())) {
+        placed = true;
         remove(nroTmp());
-        if (!ok) return NUP_WRITE_FAIL;
+        nextendo_trace("60 update: ecrase en place");
+    }
+
+    // 2) remove + rename : le chemin historique, le plus propre quand il fonctionne.
+    if (!placed) {
+        remove(nroPath());
+        if (rename(nroTmp(), nroPath()) == 0) {
+            placed = true;
+            nextendo_trace("61 update: remplace par rename");
+        } else if (copyOver(nroTmp(), nroPath())) {
+            placed = true;
+            remove(nroTmp());
+            nextendo_trace("62 update: remplace par copie apres remove");
+        }
+    }
+
+    // 3) Dernier recours : l'emplacement historique. L'utilisateur devra deplacer le
+    //    fichier a la main, mais il A la mise a jour au lieu d'une erreur.
+    if (!placed && strcmp(nroPath(), LEGACY_NRO_FILE) != 0) {
+        mkdir("sdmc:/switch", 0777);
+        if (copyOver(nroTmp(), LEGACY_NRO_FILE)) {
+            placed = true;
+            remove(nroTmp());
+            nextendo_trace("63 WARN update: cible verrouillee -> ecrit dans switch/nextendo.nro");
+        }
+    }
+
+    if (!placed) {
+        remove(nroTmp());
+        nextendo_trace("64 ERREUR update: aucune ecriture possible");
+        return NUP_WRITE_FAIL;
     }
 
     // Une mise a jour PRECEDENTE (avant ce correctif) a pu deposer une copie a l'ancien
