@@ -346,14 +346,29 @@
 //           nous ecrivons, pas seulement sur les deux IP courantes : un hosts pose par une
 //           version tres ancienne, ou par une installation manuelle vers une autre adresse,
 //           passerait un filtre base sur les IP et serait restaure vers un serveur mort.
-#define NEXTENDO_BUILD 55
+// build 56 : v3.3.4. Correctif du build 55, publie tout de suite apres lui parce qu'il
+//           ne peut pas se reparer tout seul chez ceux qui ont deja lance le 55.
+//           Le garde-fou qui empeche de sauvegarder un hosts ecrit par NOUS ne
+//           s'appliquait qu'a la CREATION de la copie, et il ne reconnaissait nos
+//           fichiers qu'a leurs deux IP courantes. Un hosts pose par un Prelude tres
+//           ancien (autre IP, en-tete non testee a l'epoque) passait donc le filtre : il
+//           etait copie, puis remis a CHAQUE passage en mode NINTENDO, et la console
+//           parlait a un serveur mort. Sans issue pour l'utilisateur, en plus : la
+//           question ne se pose qu'une fois et sa reponse est deja enregistree.
+//           Deux verrous ajoutes. On reconnait nos fichiers a l'EN-TETE ecrite par
+//           nextendo_hosts_build, quelle que soit l'IP qu'ils portaient. Et on revalide
+//           la sauvegarde AVANT de la remettre, pas seulement avant de la creer : c'est
+//           ce qui repare les installations ou la mauvaise copie existe deja, sans rien
+//           demander a personne. Une copie invalide n'est simplement jamais restauree.
+//           Rien d'autre ne change par rapport au 55.
+#define NEXTENDO_BUILD 56
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
 // NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 3
-#define NEXTENDO_VERSION_PATCH 3
+#define NEXTENDO_VERSION_PATCH 4
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo

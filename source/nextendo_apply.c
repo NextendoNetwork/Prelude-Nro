@@ -627,9 +627,17 @@ int nextendo_hosts_backup_create(void) {
 int nextendo_hosts_backup_restore(void) {
     if (R_FAILED(ensureDir(NEXTENDO_HOSTS_DIR))) return 0;
     int n = 0;
-    if (fileExists(NEXTENDO_BACKUP_SYSMMC) &&
+    // On revalide la sauvegarde AVANT de la remettre, avec le meme critere qu'a la
+    // creation. Ce n'est pas redondant : le build 55 ne validait qu'a la creation, donc
+    // une copie fabriquee par lui a pu retenir un hosts ecrit par un tres vieux Prelude
+    // (IP differente, en-tete non reconnue a l'epoque). Sans ce controle, cette copie
+    // serait remise a CHAQUE passage en mode NINTENDO et la console parlerait a un
+    // serveur mort, sans que l'utilisateur puisse revenir en arriere : la question ne se
+    // pose qu'une fois et sa reponse est deja enregistree. Valider ici repare aussi les
+    // installations existantes, sans rien leur demander.
+    if (backupCandidateOk(NEXTENDO_BACKUP_SYSMMC) &&
         copyFileRaw(NEXTENDO_BACKUP_SYSMMC, NEXTENDO_HOSTS_SYSMMC)) n++;
-    if (fileExists(NEXTENDO_BACKUP_EMUMMC) &&
+    if (backupCandidateOk(NEXTENDO_BACKUP_EMUMMC) &&
         copyFileRaw(NEXTENDO_BACKUP_EMUMMC, NEXTENDO_HOSTS_EMUMMC)) n++;
     return n;
 }
