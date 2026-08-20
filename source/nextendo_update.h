@@ -338,9 +338,14 @@
 //           lancement, UNE SEULE FOIS, deux questions : copier les hosts existants vers
 //           switch/prelude_hosts_backup, puis les remettre ou non au retour en mode
 //           NINTENDO. La seconde question ne se pose que si la copie a donne quelque
-//           chose. On ne sauvegarde JAMAIS un fichier contenant l'IP du VPS : ce serait
-//           exactement ce que nextendo_purge_leaks() existe pour empecher, laisser notre
-//           IP lisible sur la carte alors que la console est en mode NINTENDO.
+//           chose. On ne sauvegarde JAMAIS un fichier que NOUS avons ecrit : d'abord
+//           parce que garder notre IP sur la carte est exactement ce que
+//           nextendo_purge_leaks() existe pour empecher, ensuite parce que le remettre en
+//           mode NINTENDO ferait parler toute la console a nos serveurs alors qu'elle est
+//           censee etre revenue chez Nintendo. La reconnaissance se fait sur l'EN-TETE que
+//           nous ecrivons, pas seulement sur les deux IP courantes : un hosts pose par une
+//           version tres ancienne, ou par une installation manuelle vers une autre adresse,
+//           passerait un filtre base sur les IP et serait restaure vers un serveur mort.
 #define NEXTENDO_BUILD 55
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).

@@ -583,9 +583,25 @@ static bool copyFileRaw(const char *src, const char *dst) {
     return ok;
 }
 
-// Sauvegardable = le fichier existe ET ne contient aucune de nos IP (cf. regle ci-dessus).
+// Sauvegardable = le fichier existe ET n'est pas un fichier que NOUS avons ecrit.
+//
+// On le reconnait d'abord a l'EN-TETE que nextendo_hosts_build pose en premiere ligne,
+// pas seulement aux deux IP. La difference compte : un hosts ecrit par une version tres
+// ancienne de Prelude, ou par une installation manuelle pointant vers une autre adresse,
+// passerait un filtre base uniquement sur les IP courantes. On le sauvegarderait, puis le
+// mode NINTENDO le remettrait — et toute la console parlerait a un serveur mort, a chaque
+// retour en mode NINTENDO. L'en-tete, elle, est presente dans TOUT fichier genere par
+// Prelude, quelle que soit l'IP qu'il portait.
+//
+// Les IP restent testees ensuite : un fichier bricole a la main a partir du notre a pu
+// perdre l'en-tete tout en gardant les redirections.
+//
+// A ne pas confondre avec le cas legitime : des redirections vers un AUTRE serveur
+// communautaire ne sont pas les notres, elles sont sauvegardees, et les remettre en mode
+// NINTENDO est exactement ce que l'utilisateur a demande.
 static bool backupCandidateOk(const char *path) {
     if (!fileExists(path)) return false;
+    if (fileHas(path, NEXTENDO_HOSTS_HEADER_MARK)) return false;
     if (fileHas(path, NEXTENDO_SERVER_IP_DEFAULT)) return false;
     if (fileHas(path, NEXTENDO_SERVER_IP_ALT)) return false;
     return true;
