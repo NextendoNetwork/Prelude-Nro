@@ -378,14 +378,36 @@
 //           L'updater ecrit desormais dans prelude_trace.txt ce qu'il a fait (60 a 64) :
 //           il n'avait AUCUNE trace, et ce diagnostic-ci a du etre deduit au lieu d'etre
 //           lu. La prochaine fois, le fichier de l'utilisateur repondra tout seul.
-#define NEXTENDO_BUILD 57
+// build 58 : v3.3.6. Splatoon 3 sur les versions RECENTES du jeu. Les correctifs de
+//           certificat sont indexes par identifiant de build : quand Nintendo publie une
+//           mise a jour, l'identifiant change, Atmosphere ne trouve plus rien et n'applique
+//           RIEN — en silence. Le joueur voit 2122-2403 au demarrage en ligne sans le
+//           moindre indice. Signale par cakita (Prelude 3.3.2, jeu 11.2.0) et par plusieurs
+//           testeurs le 16 aout ; la 11.3.0 est sortie le 20.
+//           Ce build ajoute l'identifiant 28C4287A (11.2.0 / 11.3.0), fourni par Kazu, pour
+//           s3certbypass ET s3peername. Chaque correctif est livre sous ses DEUX formes de
+//           nom, la courte (40 hex) et la completee a 64 : les deux conventions existent
+//           selon les versions d'Atmosphere, et un nom qui ne correspond pas ne produit
+//           aucun message.
+//           Verifie avant integration : les trois identifiants portent la MEME instruction
+//           au MEME offset (0x00157B20 <- 2a008052, MOV W10, #1), ce qui confirme que la
+//           fonction visee ne bouge pas d'une version a l'autre. s3peername (0x0014E1B0 NOP
+//           + 0x0014DD80 MOV W20, WZR) reste absent pour 726D2B88, sans consequence : le
+//           certificat que nous servons porte le bon CN et les bons SAN, la verification du
+//           nom passe donc d'elle-meme.
+//           Ce que ce build NE resout PAS : la prochaine mise a jour du jeu cassera encore
+//           tout. Le correctif de fond est un parcheur par MOTIF plutot que par identifiant
+//           de build — kinnay publie deja un script qui balaie les motifs d'instructions
+//           dans un NSO et genere l'IPS (NPLN-Protocols/generate_patch.py), ce qui ramene
+//           chaque nouvelle version a quelques minutes en attendant mieux.
+#define NEXTENDO_BUILD 58
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
 // NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 3
-#define NEXTENDO_VERSION_PATCH 5
+#define NEXTENDO_VERSION_PATCH 6
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo
