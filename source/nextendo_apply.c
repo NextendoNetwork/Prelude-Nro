@@ -38,6 +38,7 @@
 #include "nextendo_config.h"
 #include "nextendo_hosts.h"
 #include "nextendo_net.h"
+#include "nextendo_update.h"  // NEXTENDO_BUILD : la question de sauvegarde se repose a chaque build
 
 char g_server_ip[NEXTENDO_SERVER_IP_MAX] = NEXTENDO_SERVER_IP_DEFAULT;
 
@@ -541,6 +542,166 @@ static bool nextendo_provision_all(void) {
     return true;
 }
 
+// ============================================================================
+//  Sauvegarde des hosts dns.mitm de l'utilisateur
+// ----------------------------------------------------------------------------
+//  Le mode NINTENDO SUPPRIME atmosphere/hosts/{sysmmc,emummc}.txt. Sur une carte
+//  vierge c'est le bon comportement, mais quiconque arrivait avec ses PROPRES
+//  redirections (un autre serveur communautaire, ses propres blocages) les perdait
+//  definitivement des le premier passage par Prelude, sans le moindre avertissement.
+//  On propose donc de les copier UNE fois, AVANT d'ecrire quoi que ce soit, et de les
+//  remettre en place quand l'utilisateur revient au mode NINTENDO.
+//
+//  La copie ne vit PAS dans atmosphere/hosts/ : nextendo_purge_leaks() y efface les
+//  *.txt.bak, et poser un fichier de plus dans le dossier que lit Atmosphere est un
+//  risque inutile. Elle vit a cote de l'etat que Prelude gere deja (sdmc:/switch/).
+//
+//  REGLE DE SECURITE : on ne sauvegarde JAMAIS un fichier contenant l'IP du VPS.
+//  Sinon la copie ferait exactement ce que purge_leaks existe pour empecher : laisser
+//  notre IP lisible en clair sur la carte alors que la console est en mode NINTENDO.
+//  C'est le cas des qu'un mode Nextendo a deja ete applique une fois.
+// ============================================================================
+#define NEXTENDO_BACKUP_DIR    "sdmc:/switch/prelude_hosts_backup"
+#define NEXTENDO_BACKUP_SYSMMC NEXTENDO_BACKUP_DIR "/sysmmc.txt"
+#define NEXTENDO_BACKUP_EMUMMC NEXTENDO_BACKUP_DIR "/emummc.txt"
+#define NEXTENDO_BACKUP_CFG    "sdmc:/switch/prelude_backup.cfg"
+
+static bool copyFileRaw(const char *src, const char *dst) {
+    FILE *in = fopen(src, "rb");
+    if (!in) return false;
+    FILE *out = fopen(dst, "wb");
+    if (!out) { fclose(in); return false; }
+    char buf[4096];
+    size_t n;
+    bool ok = true;
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+        if (fwrite(buf, 1, n, out) != n) { ok = false; break; }
+    }
+    fclose(in);
+    fclose(out);
+    if (!ok) remove(dst);   // pas de demi-copie sur la carte
+    return ok;
+}
+
+// Sauvegardable = le fichier existe ET n'est pas un fichier que NOUS avons ecrit.
+//
+// On le reconnait d'abord a l'EN-TETE que nextendo_hosts_build pose en premiere ligne,
+// pas seulement aux deux IP. La difference compte : un hosts ecrit par une version tres
+// ancienne de Prelude, ou par une installation manuelle pointant vers une autre adresse,
+// passerait un filtre base uniquement sur les IP courantes. On le sauvegarderait, puis le
+// mode NINTENDO le remettrait — et toute la console parlerait a un serveur mort, a chaque
+// retour en mode NINTENDO. L'en-tete, elle, est presente dans TOUT fichier genere par
+// Prelude, quelle que soit l'IP qu'il portait.
+//
+// Les IP restent testees ensuite : un fichier bricole a la main a partir du notre a pu
+// perdre l'en-tete tout en gardant les redirections.
+//
+// A ne pas confondre avec le cas legitime : des redirections vers un AUTRE serveur
+// communautaire ne sont pas les notres, elles sont sauvegardees, et les remettre en mode
+// NINTENDO est exactement ce que l'utilisateur a demande.
+static bool backupCandidateOk(const char *path) {
+    if (!fileExists(path)) return false;
+    if (fileHas(path, NEXTENDO_HOSTS_HEADER_MARK)) return false;
+    if (fileHas(path, NEXTENDO_SERVER_IP_DEFAULT)) return false;
+    if (fileHas(path, NEXTENDO_SERVER_IP_ALT)) return false;
+    return true;
+}
+
+bool nextendo_hosts_backup_exists(void) {
+    return fileExists(NEXTENDO_BACKUP_SYSMMC) || fileExists(NEXTENDO_BACKUP_EMUMMC);
+}
+
+int nextendo_hosts_backup_create(void) {
+    if (R_FAILED(ensureDir("sdmc:/switch"))) return 0;
+    if (R_FAILED(ensureDir(NEXTENDO_BACKUP_DIR))) return 0;
+    int n = 0;
+    if (backupCandidateOk(NEXTENDO_HOSTS_SYSMMC) &&
+        copyFileRaw(NEXTENDO_HOSTS_SYSMMC, NEXTENDO_BACKUP_SYSMMC)) n++;
+    if (backupCandidateOk(NEXTENDO_HOSTS_EMUMMC) &&
+        copyFileRaw(NEXTENDO_HOSTS_EMUMMC, NEXTENDO_BACKUP_EMUMMC)) n++;
+    fsdevCommitDevice("sdmc");
+    nextendo_trace(n ? "50 backup hosts cree" : "50 backup hosts: rien a sauvegarder");
+    return n;
+}
+
+int nextendo_hosts_backup_restore(void) {
+    if (R_FAILED(ensureDir(NEXTENDO_HOSTS_DIR))) return 0;
+    int n = 0;
+    // On revalide la sauvegarde AVANT de la remettre, avec le meme critere qu'a la
+    // creation. Ce n'est pas redondant : le build 55 ne validait qu'a la creation, donc
+    // une copie fabriquee par lui a pu retenir un hosts ecrit par un tres vieux Prelude
+    // (IP differente, en-tete non reconnue a l'epoque). Sans ce controle, cette copie
+    // serait remise a CHAQUE passage en mode NINTENDO et la console parlerait a un
+    // serveur mort, sans que l'utilisateur puisse revenir en arriere : la question ne se
+    // pose qu'une fois et sa reponse est deja enregistree. Valider ici repare aussi les
+    // installations existantes, sans rien leur demander.
+    if (backupCandidateOk(NEXTENDO_BACKUP_SYSMMC) &&
+        copyFileRaw(NEXTENDO_BACKUP_SYSMMC, NEXTENDO_HOSTS_SYSMMC)) n++;
+    if (backupCandidateOk(NEXTENDO_BACKUP_EMUMMC) &&
+        copyFileRaw(NEXTENDO_BACKUP_EMUMMC, NEXTENDO_HOSTS_EMUMMC)) n++;
+    return n;
+}
+
+// prelude_backup.cfg : une cle par ligne.
+//   prompt_build     dernier build ayant POSE la question (0 = jamais)
+//   use_for_nintendo 1 = remettre la sauvegarde au passage en mode NINTENDO
+static void backupCfgRead(int *promptBuild, int *useForNintendo) {
+    *promptBuild = 0;
+    *useForNintendo = 0;
+    FILE *f = fopen(NEXTENDO_BACKUP_CFG, "rb");
+    if (!f) return;
+    char buf[256];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+    const char *p = strstr(buf, "prompt_build=");
+    if (p) *promptBuild = atoi(p + 13);
+    p = strstr(buf, "use_for_nintendo=");
+    if (p) *useForNintendo = atoi(p + 17);
+}
+
+static bool backupCfgWrite(int promptBuild, int useForNintendo) {
+    if (R_FAILED(ensureDir("sdmc:/switch"))) return false;
+    char buf[128];
+    snprintf(buf, sizeof(buf), "prompt_build=%d\nuse_for_nintendo=%d\n",
+             promptBuild, useForNintendo);
+    bool ok = writeTextFile(NEXTENDO_BACKUP_CFG, buf);
+    fsdevCommitDevice("sdmc");
+    return ok;
+}
+
+// UNE SEULE FOIS dans la vie de l'installation. On repose la question ni au build
+// suivant ni jamais : des que l'utilisateur a repondu, ses hosts d'origine sont soit
+// sauvegardes soit definitivement ecrases, et redemander a chaque mise a jour ne
+// ferait qu'afficher « rien a sauvegarder » a chaque version. Le build est tout de
+// meme enregistre : il dit QUELLE version a pose la question, utile pour un diagnostic.
+bool nextendo_backup_prompt_needed(void) {
+    int pb, u;
+    backupCfgRead(&pb, &u);
+    return pb == 0;
+}
+
+void nextendo_backup_prompt_done(void) {
+    int pb, u;
+    backupCfgRead(&pb, &u);
+    (void)pb;
+    backupCfgWrite(NEXTENDO_BUILD, u);
+}
+
+bool nextendo_backup_use_for_nintendo(void) {
+    int pb, u;
+    backupCfgRead(&pb, &u);
+    (void)pb;
+    return u != 0;
+}
+
+void nextendo_backup_set_use_for_nintendo(bool on) {
+    int pb, u;
+    backupCfgRead(&pb, &u);
+    (void)u;
+    backupCfgWrite(pb, on ? 1 : 0);
+}
+
 bool nextendo_apply_nextendo_ip(const char *ip) {
     if (R_FAILED(ensureDir(NEXTENDO_HOSTS_DIR))) return false;
     if (!nextendo_provision_all()) {
@@ -582,6 +743,14 @@ bool nextendo_apply_nintendo(void) {
     remove(NEXTENDO_HOSTS_SYSMMC);
     remove(NEXTENDO_HOSTS_EMUMMC);
     nextendo_trace("21 hosts supprimes");
+    // L'utilisateur a demande a retrouver SES redirections d'origine : on les remet
+    // APRES la suppression. La sauvegarde a ete refusee a la creation si elle contenait
+    // une de nos IP, donc rien de Nextendo ne peut revenir par ce chemin.
+    if (nextendo_backup_use_for_nintendo() && nextendo_hosts_backup_exists()) {
+        int nb = nextendo_hosts_backup_restore();
+        nextendo_trace(nb ? "21b hosts utilisateur restaures"
+                          : "21b WARN: restauration hosts utilisateur echouee");
+    }
     nextendo_purge_leaks();
     nextendo_trace("22 purge_leaks ok");
 

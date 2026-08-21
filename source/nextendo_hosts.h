@@ -43,6 +43,11 @@
 char *nextendo_hosts_build(const char *ip);
 
 // Chemins cibles sur la carte SD.
+// Signature des fichiers hosts que NOUS generons. Doit rester identique au texte emis
+// par nextendo_hosts_build() : c'est ce qui permet de reconnaitre nos propres fichiers
+// sans dependre de l'IP du moment.
+#define NEXTENDO_HOSTS_HEADER_MARK "NEXTENDO NETWORK - Atmosphere DNS-MITM"
+
 #define NEXTENDO_HOSTS_SYSMMC "sdmc:/atmosphere/hosts/sysmmc.txt"
 #define NEXTENDO_HOSTS_EMUMMC "sdmc:/atmosphere/hosts/emummc.txt"
 #define NEXTENDO_HOSTS_DIR    "sdmc:/atmosphere/hosts"

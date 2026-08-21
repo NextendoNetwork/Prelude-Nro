@@ -66,4 +66,15 @@ void nextendo_ssbu_remove(void);
 bool nextendo_ssbu_oc_is_disabled(void);
 bool nextendo_ssbu_oc_set(bool enabled);
 
+// --- Sauvegarde des hosts dns.mitm que l'utilisateur avait AVANT Prelude. ---
+// create/restore renvoient le NOMBRE de fichiers traites (0 = rien a faire, pas une erreur).
+bool nextendo_hosts_backup_exists(void);
+int  nextendo_hosts_backup_create(void);
+int  nextendo_hosts_backup_restore(void);
+// La question ne se pose qu'au premier lancement et apres chaque mise a jour.
+bool nextendo_backup_prompt_needed(void);
+void nextendo_backup_prompt_done(void);
+bool nextendo_backup_use_for_nintendo(void);
+void nextendo_backup_set_use_for_nintendo(bool on);
+
 #endif // NEXTENDO_APPLY_H

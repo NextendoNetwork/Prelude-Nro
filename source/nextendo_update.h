@@ -310,14 +310,82 @@
 //           telemetrie (receive-%), jamais accounts.nintendo.com ni les hotes de jeu,
 //           donc aucun risque qu'ils ecrasent nos redirections. Le seul recouvrement
 //           est receive-%, ou les deux valeurs bloquent (0.0.0.0 / 127.0.0.1).
-#define NEXTENDO_BUILD 54
+// build 55 : v3.3.3. Deux corrections, dont une signalee par presque tous les utilisateurs.
+//           AUTO-UPDATER : il ecrivait TOUJOURS dans sdmc:/switch/nextendo.nro, un chemin
+//           fixe, sans regarder d'ou le .nro tournait. Pour quiconque gardait Prelude
+//           ailleurs (autre nom, sous-dossier, racine de la carte), la mise a jour
+//           deposait donc un fichier EN PLUS : celui qu'il relancait restait l'ancien.
+//           Les DEUX rapports recus n'en faisaient qu'un seul — « l'updater ne marche
+//           pas » (on relance l'ancienne version) et « il devrait remplacer Prelude »
+//           (les deux versions sont conservees). Le seul utilisateur pour qui ca
+//           fonctionnait etait celui dont le chemin coincidait avec la constante : ce
+//           n'est pas son dossier qui a aide, c'est la coincidence.
+//           hbmenu passe le chemin REEL du .nro dans argv[0], et main() le jetait
+//           (parametre inutilise). On s'en sert : l'updater remplace desormais le fichier
+//           LANCE, et le .new est ecrit a cote de la cible pour que rename() ne traverse
+//           rien. Repli sur l'ancien chemin si argv est inexploitable — mieux vaut le
+//           comportement historique qu'une ecriture a un endroit invente.
+//           Le duplicat orphelin laisse a l'ancien emplacement par les versions
+//           precedentes est supprime apres une mise a jour reussie, et lui seul.
+//           ATTENTION : ce correctif ne profite a personne avant d'etre installe A LA
+//           MAIN. Une version cassee mettra encore a jour a cote ; c'est a partir de la
+//           3.3.3 que l'updater se remplace lui-meme.
+//
+//           SAUVEGARDE DES HOSTS UTILISATEUR : le mode NINTENDO supprime atmosphere/
+//           hosts/{sysmmc,emummc}.txt. Qui arrivait avec ses PROPRES redirections (un
+//           autre serveur communautaire, ses propres blocages) les perdait des le premier
+//           passage par Prelude, sans le moindre avertissement. Au tout premier
+//           lancement, UNE SEULE FOIS, deux questions : copier les hosts existants vers
+//           switch/prelude_hosts_backup, puis les remettre ou non au retour en mode
+//           NINTENDO. La seconde question ne se pose que si la copie a donne quelque
+//           chose. On ne sauvegarde JAMAIS un fichier que NOUS avons ecrit : d'abord
+//           parce que garder notre IP sur la carte est exactement ce que
+//           nextendo_purge_leaks() existe pour empecher, ensuite parce que le remettre en
+//           mode NINTENDO ferait parler toute la console a nos serveurs alors qu'elle est
+//           censee etre revenue chez Nintendo. La reconnaissance se fait sur l'EN-TETE que
+//           nous ecrivons, pas seulement sur les deux IP courantes : un hosts pose par une
+//           version tres ancienne, ou par une installation manuelle vers une autre adresse,
+//           passerait un filtre base sur les IP et serait restaure vers un serveur mort.
+// build 56 : v3.3.4. Correctif du build 55, publie tout de suite apres lui parce qu'il
+//           ne peut pas se reparer tout seul chez ceux qui ont deja lance le 55.
+//           Le garde-fou qui empeche de sauvegarder un hosts ecrit par NOUS ne
+//           s'appliquait qu'a la CREATION de la copie, et il ne reconnaissait nos
+//           fichiers qu'a leurs deux IP courantes. Un hosts pose par un Prelude tres
+//           ancien (autre IP, en-tete non testee a l'epoque) passait donc le filtre : il
+//           etait copie, puis remis a CHAQUE passage en mode NINTENDO, et la console
+//           parlait a un serveur mort. Sans issue pour l'utilisateur, en plus : la
+//           question ne se pose qu'une fois et sa reponse est deja enregistree.
+//           Deux verrous ajoutes. On reconnait nos fichiers a l'EN-TETE ecrite par
+//           nextendo_hosts_build, quelle que soit l'IP qu'ils portaient. Et on revalide
+//           la sauvegarde AVANT de la remettre, pas seulement avant de la creer : c'est
+//           ce qui repare les installations ou la mauvaise copie existe deja, sans rien
+//           demander a personne. Une copie invalide n'est simplement jamais restauree.
+//           Rien d'autre ne change par rapport au 55.
+// build 57 : v3.3.5. L'updater du 55/56 pouvait echouer sur « impossible d'ecrire sur
+//           la SD » (rapporte par Andrei, depuis la 3.3.3). Le 55 a fait passer la cible
+//           de « un chemin fixe » a « le fichier qu'on execute ». Le code disait que
+//           l'ecrasement etait sans risque parce qu'on tourne depuis la RAM : c'etait
+//           gratuit tant que le fichier remplace n'etait PAS celui qu'on executait, et ca
+//           a cesse de l'etre precisement avec ce changement. Selon le chargeur, le .nro
+//           en cours peut rester ouvert — remove() echoue, rename() ne peut pas ecraser
+//           sur FAT32, l'ouverture en ecriture est refusee, et l'utilisateur se retrouve
+//           avec une erreur alors que la mise a jour est deja telechargee.
+//           Trois tentatives au lieu d'une : ecrasement EN PLACE sans supprimer d'abord
+//           (passe si le fichier resiste a la suppression mais pas a l'ecriture), puis
+//           remove+rename, puis en dernier recours l'ancien emplacement fixe. Ce dernier
+//           recours recree le doublon que le 55 corrigeait : c'est assume, une mise a
+//           jour installee ailleurs vaut mieux qu'une mise a jour perdue.
+//           L'updater ecrit desormais dans prelude_trace.txt ce qu'il a fait (60 a 64) :
+//           il n'avait AUCUNE trace, et ce diagnostic-ci a du etre deduit au lieu d'etre
+//           lu. La prochaine fois, le fichier de l'utilisateur repondra tout seul.
+#define NEXTENDO_BUILD 57
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
 // NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 3
-#define NEXTENDO_VERSION_PATCH 2
+#define NEXTENDO_VERSION_PATCH 5
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo
@@ -333,6 +401,11 @@ typedef enum {
 } nextendo_update_result;
 
 // Interroge le serveur (rapide, timeout court). socketInitializeDefault géré en interne.
+// Chemin du .nro en cours d'execution (argv[0] de hbmenu). A appeler AVANT toute mise
+// a jour : c'est ce fichier-la qui sera remplace. Sans cet appel, l'updater retombe sur
+// l'emplacement historique sdmc:/switch/nextendo.nro.
+void nextendo_update_set_self_path(const char *argv0);
+
 NextendoUpdate nextendo_update_check(void);
 
 // Telecharge le nouveau .nro et remplace /switch/nextendo.nro (via un .new + rename).
