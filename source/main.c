@@ -36,6 +36,7 @@
 #include "nextendo_flag.h"
 #include "ui_theme.h"
 #include "lang.h"
+#include "nextendo_time.h"
 
 enum {
     SCREEN_PICKER, SCREEN_S2_INFO, SCREEN_S2_PROGRESS, SCREEN_S2_RESULT,
@@ -285,6 +286,8 @@ int main(int argc, char **argv) {
                     // MAJ OBLIGATOIRE : tant qu'une version plus recente existe, le homebrew
                     // est verrouille -> seules l'installation (Y) et la sortie (+/B) sont possibles.
                     if (k & HidNpadButton_Y) { screen = SCREEN_UPD_CONFIRM; }
+                } else if ((k & HidNpadButton_X) && railSel == RAIL_MODE) {
+                    screen = SCREEN_TIME_PROGRESS;
                 } else if (!paneFocus) {
                     // --- Colonne de gauche : on parcourt les sections ---
                     if (k & HidNpadButton_AnyUp)   { railSel = (railSel + RAIL_N - 1) % RAIL_N; status[0] = 0; }
@@ -382,9 +385,15 @@ int main(int argc, char **argv) {
                                        flagCurrent, ssbuInstalled, ssbuOcDisabled);
                         svcSleepThread(1200000000ULL);
                         audio_exit();
-                        nextendo_reboot();
-                        snprintf(status, sizeof(status), "%s", lang_str(STR_STATUS_REBOOT_FAIL));
-                        state = 0;
+                        Result rebrc = nextendo_reboot();
+                        if (R_SUCCEEDED(rebrc)) {
+                            while (appletMainLoop()) {
+                                svcSleepThread(100000000ULL);
+                            }
+                        } else {
+                            snprintf(status, sizeof(status), "%s", lang_str(STR_STATUS_REBOOT_FAIL));
+                            state = 0;
+                        }
                     } else {
                         snprintf(status, sizeof(status), "%s", lang_str(STR_STATUS_SD_ERROR));
                         state = 0;
@@ -565,7 +574,21 @@ int main(int argc, char **argv) {
             }
             screen = SCREEN_FLAG_RESULT;
 
-        } else { // SCREEN_S2_RESULT / SCREEN_UPD_RESULT / SCREEN_FLAG_RESULT / SCREEN_SSBU_RESULT (fallback)
+        } else if (screen == SCREEN_TIME_PROGRESS) {
+            ui_draw_progress(lang_str(STR_STATUS_SYNC_TIME));
+            svcSleepThread(150000000ULL);
+            Result syncrc = nextendo_time_sync();
+            rOk = R_SUCCEEDED(syncrc);
+            if (rOk) {
+                snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_TIME_OK));
+                snprintf(rMsg, sizeof(rMsg), "%s", lang_str(STR_STATUS_TIME_OK_DESC));
+            } else {
+                snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_TIME_FAIL));
+                snprintf(rMsg, sizeof(rMsg), "%s", lang_str(STR_STATUS_TIME_FAIL_DESC));
+            }
+            screen = SCREEN_TIME_RESULT;
+
+        } else { // SCREEN_S2_RESULT / SCREEN_UPD_RESULT / SCREEN_FLAG_RESULT / SCREEN_TIME_RESULT (fallback)
             if (k & (HidNpadButton_A | HidNpadButton_B | HidNpadButton_Plus))
                 screen = (screen == SCREEN_FLAG_RESULT) ? SCREEN_FLAG_MENU
                                                         : SCREEN_PICKER;

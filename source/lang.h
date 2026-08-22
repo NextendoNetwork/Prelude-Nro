@@ -37,7 +37,7 @@ typedef enum {
     STR_DESC_S2,                // "Downloads Splatoon 2 schedule..."
 
     // --- Help lines ---
-    STR_HELP_MODE,              // "A: switch mode   < >: change   B: quit"
+    STR_HELP_MODE,              // "A: switch mode   < >: change   X: sync time   B: quit"
     STR_HELP_S2,                // "A: install schedule   < >: change   B: quit"
 
     // --- Update banner ---
@@ -154,6 +154,13 @@ typedef enum {
     STR_STATUS_FLAG_NET_FAIL_DESC,    // "Could not download flag. Check connection."
     STR_STATUS_FLAG_WRITE_FAIL,       // "Write error"
     STR_STATUS_FLAG_WRITE_FAIL_DESC,  // "Cannot write to SD card."
+
+    // --- Time sync progress / result ---
+    STR_STATUS_SYNC_TIME,             // "Synchronizing time..."
+    STR_STATUS_TIME_OK,               // "Time synchronized"
+    STR_STATUS_TIME_OK_DESC,          // "The console time has been successfully synchronized."
+    STR_STATUS_TIME_FAIL,             // "Synchronization error"
+    STR_STATUS_TIME_FAIL_DESC,        // "Could not synchronize time (check connection)."
 
     // --- Nouveau cromo (rail de navigation + barre de boutons) ---
     STR_RAIL_MODE,                    // "Mode"        entree du rail
