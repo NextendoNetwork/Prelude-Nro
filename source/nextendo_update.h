@@ -400,14 +400,63 @@
 //           de build — kinnay publie deja un script qui balaie les motifs d'instructions
 //           dans un NSO et genere l'IPS (NPLN-Protocols/generate_patch.py), ce qui ramene
 //           chaque nouvelle version a quelques minutes en attendant mieux.
-#define NEXTENDO_BUILD 58
+// build 59 : v3.3.7. Deux changements, tous deux nes du meme constat : l'echec des
+//           correctifs Splatoon 3 est MUET, et l'utilisateur n'a aucun moyen de savoir
+//           ou il en est.
+//           1. RAFRAICHISSEMENT AU DEMARRAGE. Les fichiers du romfs n'etaient ecrits sur
+//           la carte QU'A l'application d'un mode. Mettre Prelude a jour remplacait donc
+//           le .nro sans rien changer sur la carte : le joueur gardait les correctifs de
+//           la version precedente et revoyait 2122-2403, convaincu que la mise a jour
+//           n'avait servi a rien. C'est la moitie des signalements du jour. Desormais, si
+//           le mode Nextendo est DEJA actif, la carte est rafraichie au lancement. Le mode
+//           Nintendo n'est pas touche : il retire volontairement la pile de certificats, et
+//           la reposer en douce serait une faille, pas un confort.
+//           2. SECTION SPLATOON 3. Purement informative : combien de correctifs sont sur
+//           la carte contre combien ce .nro en livre, si la redirection DNS est active, ou
+//           vivent les fichiers, et le rappel qu'une mise a jour du jeu exige de nouveaux
+//           correctifs. Elle ne declare qu'une ligne au clavier : la navigation calcule un
+//           modulo sur ce nombre, et un zero y serait une division par zero.
+//           Ce qu'elle ne peut PAS dire, et c'est ecrit a l'ecran : que les fichiers soient
+//           presents ne prouve pas qu'Atmosphere les ait APPLIQUES. Un identifiant de build
+//           inconnu ne recoit rien, en silence. Seul un correctif qui se signale lui-meme
+//           au demarrage repondrait a cela.
+//           3. TROIS HOTES DE JEU MANQUANTS. Mario Tennis Aces (g23932a00), ARMS (g25c08801)
+//           et Splatoon 2 (g2df33d01) ne comptaient que sur le wildcard g2*, alors que les
+//           cinq autres jeux avaient leur ligne explicite — un oubli, pas un choix. Le *
+//           mid-label est ignore sur certains builds d'Atmosphere : la ou c'est le cas, ces
+//           trois jeux ne resolvaient pas, sans erreur qui l'explique. Ids releves sur les
+//           conteneurs en production, pas devines.
+//           4. DRAPEAUX MK8D FABRIQUES LOCALEMENT. Le patch de pays ne contenait pas un
+//           index : il ecrit les DEUX LETTRES du code en ASCII, et les 110 patches du depot
+//           alyeri sont le meme fichier de 103 octets a cinq positions pres. Verifie en
+//           regenerant les 110 a l'octet pres depuis le seul patch JP. Prelude embarque donc
+//           le gabarit et fabrique le patch lui-meme : plus de telechargement HTTPS pour y
+//           placer deux caracteres, donc plus de "fallo de red" sur ce bouton, et ca marche
+//           hors ligne. Effet de bord voulu : n'importe quel code a deux lettres devient
+//           installable, ce qui ferme l'issue #17 (CN / HK / TW, ymzhen) sans rien publier
+//           en amont. RESERVE : le patch fait dire "CN" a la console, il ne cree pas la
+//           texture du drapeau. Les 110 d'origine viennent de la table interne de MK8D,
+//           les trois nouveaux non — a confirmer sur console.
+// build 60 : v3.3.8. RETRAIT de CN / HK / TW, ajoutes quelques heures plus tot en v3.3.7.
+//           alyeri, qui a releve la table des pays DANS le jeu pour produire les 110 patches
+//           d origine, confirme que MK8D ne possede pas ces drapeaux. Le patch faisait bien
+//           dire "CN" a la console — il ne pouvait pas creer l image que le jeu n a pas.
+//           Erreur de raisonnement a retenir : de "je sais fabriquer le patch pour n importe
+//           quel code" j ai conclu "n importe quel pays peut etre ajoute". Les deux ne se
+//           rejoignent que si le jeu a la texture, ce qui n a jamais ete verifie avant
+//           publication. La bonne source etait alyeri, qui avait la reponse depuis le debut.
+//           La fabrication LOCALE du patch (build 59) est CONSERVEE : elle supprime un
+//           aller-retour reseau reel sur les 110 pays qui, eux, existent.
+//           Reponse a l issue #17 : la demande est legitime mais irrealisable par un patch
+//           ExeFS — il faudrait ajouter des textures au jeu, ce qui est un autre travail.
+#define NEXTENDO_BUILD 60
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
 // NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 3
-#define NEXTENDO_VERSION_PATCH 6
+#define NEXTENDO_VERSION_PATCH 8
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo

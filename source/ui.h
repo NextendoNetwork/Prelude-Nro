@@ -19,6 +19,7 @@
 #ifndef UI_H
 #define UI_H
 #include <switch.h>
+#include "nextendo_apply.h"   // NextendoS3Status : la section Splatoon 3 affiche cet etat
 
 // Init framebuffer (1280x720 RGBA8888) + police partagee (pl + FreeType).
 bool ui_init(void);
@@ -34,7 +35,8 @@ void ui_exit(void);
 // Le curseur n'est dessine que du cote qui a le focus.
 void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
                     const char *status, int updMaj, int updMin, int updPatch,
-                    const char *flagCode, bool ssbuInstalled, bool ssbuOcDisabled);
+                    const char *flagCode, bool ssbuInstalled, bool ssbuOcDisabled,
+                    const NextendoS3Status *s3);
 
 // Nombre de lignes du panneau d'une section — main.c borne le focus avec ca.
 int ui_pane_rows(int railSel, bool ssbuInstalled);

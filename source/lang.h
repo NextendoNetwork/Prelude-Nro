@@ -167,7 +167,24 @@ typedef enum {
     STR_RAIL_S2,                      // "Splatoon 2"
     STR_RAIL_FLAG,                    // "Country"
     STR_RAIL_SSBU,                    // "Smash"       (L)
+    STR_RAIL_S3,                      // "Splatoon 3"  entree du rail
     STR_RAIL_LANG,                    // "Language"    (R)
+
+    // --- Section Splatoon 3 : etat des correctifs ---
+    STR_S3_TITLE,          // "Correctifs Splatoon 3"
+    STR_S3_OK,             // parches al dia
+    STR_S3_STALE,          // la carte porte une autre version que ce .nro
+    STR_S3_MISSING,        // rien sur la carte
+    STR_S3_FIX,            // quoi faire
+    STR_S3_DNS_OFF,        // dns.mitm coupe
+    STR_S3_NINTENDO,       // en mode Nintendo, c'est normal
+    STR_S3_WHERE,          // ou vivent les fichiers
+    STR_S3_LIMIT,          // ce que ce controle ne peut pas dire
+    STR_S3_VERSION,        // pense a ne pas mettre le jeu a jour
+    STR_S3_INSTALL,        // bouton : poser les correctifs
+    STR_S3_REINSTALL,      // bouton : les reposer alors qu'ils sont deja la
+    STR_S3_REINSTALL_SUB,  // sous-titre du bouton
+    STR_S3_DONE,           // resultat : ecrits, il faut redemarrer
     STR_BADGE_ACTIVE,                 // "Active"      pastille du mode courant
     STR_HINT_APPLY,                   // "Apply"       barre de boutons
     STR_HINT_EXIT,                    // "Exit"

@@ -66,6 +66,21 @@ void nextendo_ssbu_remove(void);
 bool nextendo_ssbu_oc_is_disabled(void);
 bool nextendo_ssbu_oc_set(bool enabled);
 
+// --- Etat des correctifs Splatoon 3 poses sur la carte SD. ---
+// Le jeu embarque sa propre pile TLS et refuse notre certificat sans ces correctifs :
+// sans eux, 2122-2403 des l'entree en ligne. Atmosphere les applique par identifiant de
+// build et NE DIT RIEN quand aucun ne correspond, d'ou l'interet de savoir au moins ce
+// qui est present sur la carte.
+typedef struct {
+    int  onSd;        // correctifs presents sur la carte
+    int  inRomfs;     // correctifs livres par ce .nro
+    bool dnsMitmOn;   // enable_dns_mitm = 1 dans system_settings.ini
+    bool hostsOk;     // les hosts portent bien notre IP
+} NextendoS3Status;
+
+void nextendo_s3_status(NextendoS3Status *out);
+bool nextendo_provision_all_public(void);
+
 // --- Sauvegarde des hosts dns.mitm que l'utilisateur avait AVANT Prelude. ---
 // create/restore renvoient le NOMBRE de fichiers traites (0 = rien a faire, pas une erreur).
 bool nextendo_hosts_backup_exists(void);

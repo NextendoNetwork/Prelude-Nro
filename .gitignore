@@ -6,3 +6,14 @@
 *.map
 nextendo.nro
 /backups/
+
+# Volcados de juego y material extraido — NUNCA deben entrar al repo publico.
+# Un `git add -A` tras compilar los arrastro el 2026-08-23 : el push a echoue sur un
+# NSP de 6,8 Go, ce qui a evite de publier une ROM commerciale sur un depot public.
+*.nsp
+*.xci
+*.nca
+S3-cert-bypass-SD-*/
+SSBU QUICKPLAY/
+Nextendo-Tournament-Fix.zip
+flag_*.ips

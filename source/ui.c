@@ -329,6 +329,7 @@ static const char *railLabel(int i) {
         case RAIL_MODE: return lang_str(STR_RAIL_MODE);
         case RAIL_SSBU: return lang_str(STR_RAIL_SSBU);
         case RAIL_S2:   return lang_str(STR_RAIL_S2);
+        case RAIL_S3:   return lang_str(STR_RAIL_S3);
         case RAIL_FLAG: return lang_str(STR_RAIL_FLAG);
         default:        return lang_str(STR_RAIL_LANG);
     }
@@ -341,6 +342,11 @@ int ui_pane_rows(int railSel, bool ssbuInstalled) {
     switch (railSel) {
         case RAIL_MODE: return 2;                        // Nextendo / Nintendo
         case RAIL_SSBU: return ssbuInstalled ? 2 : 1;    // mod (+ overclock si installe)
+        // Une seule ligne actionnable : le bouton de (re)installation. Le reste de la
+        // section est du texte. On declare 1 meme en mode Nintendo, ou le bouton n'est
+        // pas dessine : la navigation fait paneSel % rows, et un zero serait une
+        // division par zero — un plantage, pas une section vide.
+        case RAIL_S3:   return 1;
         case RAIL_LANG: return 4;                        // EN / ES / PT / FR
         default:        return 1;                        // S2, drapeau : une action
     }
@@ -368,7 +374,8 @@ static void drawRail(u32 *b, u32 st, int railSel, bool railFocused) {
 
 void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
                     const char *status, int updMaj, int updMin, int updPatch,
-                    const char *flagCode, bool ssbuInstalled, bool ssbuOcDisabled) {
+                    const char *flagCode, bool ssbuInstalled, bool ssbuOcDisabled,
+                    const NextendoS3Status *s3) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
     chromeClear(b, st);
@@ -422,6 +429,48 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
                                                   : STR_SSBU_OC_ON_DESC));
             chromeToggle(b, st, x, rowY, w, !ssbuOcDisabled);
         }
+    } else if (railSel == RAIL_S3) {
+        // Le corps de cette section est du TEXTE, pas des lignes cliquables : il ne
+        // repond a rien, et lui donner l'apparence d'une carte comme les autres
+        // sections promettait une action qui n'existe pas. Seul le bouton du bas est
+        // reellement actionnable, et il est le seul a porter ce style.
+        u32 cInfo = packColor(theme_text2());
+        u32 cWarn = packColor(theme_warn());
+        char ligne[192];
+        bool aJour = (s3 && s3->onSd > 0 && s3->onSd >= s3->inRomfs);
+
+        if (s3 && current == CHOICE_NINTENDO) {
+            drawF(b, st, s_semi, x, y + FS_BODY, FS_BODY, cInfo, lang_str(STR_S3_NINTENDO));
+        } else if (s3 && s3->onSd == 0) {
+            drawF(b, st, s_semi, x, y + FS_BODY, FS_BODY, cWarn, lang_str(STR_S3_MISSING));
+        } else if (s3 && s3->onSd < s3->inRomfs) {
+            snprintf(ligne, sizeof(ligne), lang_str(STR_S3_STALE), s3->onSd, s3->inRomfs);
+            drawF(b, st, s_semi, x, y + FS_BODY, FS_BODY, cWarn, ligne);
+        } else if (s3) {
+            snprintf(ligne, sizeof(ligne), lang_str(STR_S3_OK), s3->onSd);
+            drawF(b, st, s_semi, x, y + FS_BODY, FS_BODY, cInfo, ligne);
+        }
+        y += FS_BODY + SP_MD;
+
+        if (s3 && !s3->dnsMitmOn && current != CHOICE_NINTENDO) {
+            drawF(b, st, s_reg, x, y + FS_CAP, FS_CAP, cWarn, lang_str(STR_S3_DNS_OFF));
+            y += FS_CAP + SP_SM;
+        }
+        drawF(b, st, s_reg, x, y + FS_CAP, FS_CAP, cInfo, lang_str(STR_S3_WHERE));
+        y += FS_CAP + SP_SM;
+        drawF(b, st, s_reg, x, y + FS_CAP, FS_CAP, cInfo, lang_str(STR_S3_LIMIT));
+        y += FS_CAP + SP_SM;
+        drawF(b, st, s_reg, x, y + FS_CAP, FS_CAP, cInfo, lang_str(STR_S3_VERSION));
+        y += FS_CAP + SP_LG;
+
+        // La SEULE ligne actionnable. En mode Nintendo elle n'apparait pas : ce mode
+        // retire volontairement la pile de certificats, et un bouton qui la repose
+        // serait une faille deguisee en confort.
+        if (current != CHOICE_NINTENDO)
+            y = chromeRow(b, st, x, y, w, FOC(0),
+                          lang_str(aJour ? STR_S3_REINSTALL : STR_S3_INSTALL),
+                          lang_str(STR_S3_REINSTALL_SUB));
+
     } else if (railSel == RAIL_S2) {
         y = chromeRow(b, st, x, y, w, FOC(0), lang_str(STR_RAIL_S2), lang_str(STR_DESC_S2));
     } else if (railSel == RAIL_FLAG) {

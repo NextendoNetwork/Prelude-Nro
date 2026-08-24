@@ -176,6 +176,19 @@ int main(int argc, char **argv) {
     bool noEmummc = (boot == BOOT_SYSMMC);
 
     int  current = nextendo_current_mode();
+    // --- Rafraichir la carte SD au demarrage, si le mode Nextendo est DEJA actif. ---
+    // Les fichiers du romfs (correctifs Splatoon 3, CA, patches navigateur) n'etaient
+    // ecrits QU'A l'application du mode. Une mise a jour de Prelude remplacait donc le
+    // .nro sans rien changer sur la carte : le joueur gardait les correctifs de la
+    // version precedente et revoyait le meme code d'erreur, convaincu que la mise a
+    // jour n'avait servi a rien. C'est la cause de la moitie des signalements recus.
+    //
+    // On ne touche RIEN en mode Nintendo : ce mode retire volontairement la pile de
+    // certificats, et la reposer en douce serait une faille, pas un confort.
+    if (current == CHOICE_NEXTENDO) nextendo_provision_all_public();
+
+    NextendoS3Status s3;
+    nextendo_s3_status(&s3);
     int  sel    = (current == CHOICE_NEXTENDO) ? CHOICE_NINTENDO : CHOICE_NEXTENDO;
     int  railSel = RAIL_MODE;   // section du rail
     int  paneSel = 0;           // ligne du panneau
@@ -319,6 +332,18 @@ int main(int argc, char **argv) {
                             nextendo_trace("17 A picker -> ecran de confirmation");
                             state = 1; status[0] = 0;
                             break;
+                        case RAIL_S3:
+                            // Reecrit les fichiers du romfs sur la carte sans passer par
+                            // une bascule de mode complete : c'est le geste qui manquait
+                            // a ceux qui mettent Prelude a jour puis revoient le meme code
+                            // d'erreur. Interdit en mode Nintendo, qui retire la pile de
+                            // certificats expres — la reposer ici serait une faille.
+                            if (current != CHOICE_NINTENDO) {
+                                nextendo_provision_all_public();
+                                nextendo_s3_status(&s3);   // relire : le panneau doit refleter la carte
+                                snprintf(status, sizeof(status), "%s", lang_str(STR_S3_DONE));
+                            }
+                            break;
                         case RAIL_S2:   screen = SCREEN_S2_INFO;   break;
                         case RAIL_FLAG: screen = SCREEN_FLAG_MENU; break;
                         case RAIL_LANG:
@@ -357,7 +382,7 @@ int main(int argc, char **argv) {
                                    upd.available ? upd.maj : 0,
                                    upd.available ? upd.min : 0,
                                    upd.available ? upd.patch : 0,
-                                   flagCurrent, ssbuInstalled, ssbuOcDisabled);
+                                   flagCurrent, ssbuInstalled, ssbuOcDisabled, &s3);
 
                 // Toast du serveur
                 if (toastFrames > 0) {
@@ -382,7 +407,7 @@ int main(int argc, char **argv) {
                                        upd.available ? upd.maj : 0,
                                        upd.available ? upd.min : 0,
                                        upd.available ? upd.patch : 0,
-                                       flagCurrent, ssbuInstalled, ssbuOcDisabled);
+                                       flagCurrent, ssbuInstalled, ssbuOcDisabled, &s3);
                         svcSleepThread(1200000000ULL);
                         audio_exit();
                         Result rebrc = nextendo_reboot();
@@ -536,15 +561,25 @@ int main(int argc, char **argv) {
                 screen = SCREEN_PICKER;
             } else if (k & HidNpadButton_A) {
                 screen = SCREEN_FLAG_PROGRESS;
-            } else if (k & HidNpadButton_Up) {
-                if (flagSel > 0) {
-                    flagSel--;
+            } else {
+                // AnyUp/AnyDown, pas Up/Down : ces dernieres ne couvrent que la croix
+                // directionnelle. Le reste du menu accepte deja le stick, cet ecran-ci
+                // etait le seul a l'ignorer — signale par un joueur.
+                //
+                // L et R sautent une page : la liste compte 110 pays, et les parcourir
+                // un par un pour arriver en bas est une corvee inutile.
+                int avant = flagSel;
+                if (k & HidNpadButton_AnyUp)   flagSel--;
+                if (k & HidNpadButton_AnyDown) flagSel++;
+                if (k & HidNpadButton_L)       flagSel -= FLAG_ROWS;
+                if (k & HidNpadButton_R)       flagSel += FLAG_ROWS;
+                if (flagSel < 0)               flagSel = 0;
+                if (flagSel > FLAG_COUNT - 1)  flagSel = FLAG_COUNT - 1;
+                if (flagSel != avant) {
+                    // Le defilement suit la selection, sans jamais sortir de la liste.
                     if (flagSel < flagScroll) flagScroll = flagSel;
-                }
-            } else if (k & HidNpadButton_Down) {
-                if (flagSel < FLAG_COUNT - 1) {
-                    flagSel++;
                     if (flagSel >= flagScroll + FLAG_ROWS) flagScroll = flagSel - (FLAG_ROWS - 1);
+                    if (flagScroll < 0) flagScroll = 0;
                 }
             }
             if (screen == SCREEN_FLAG_MENU)

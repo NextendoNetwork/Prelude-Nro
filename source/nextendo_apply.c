@@ -138,6 +138,12 @@ char *nextendo_hosts_build(const char *ip) {
     snprintf(line, sizeof(line), "%s g2ee2e300-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // ACNH
     snprintf(line, sizeof(line), "%s g26cfaf00-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // Strikers
     snprintf(line, sizeof(line), "%s g20de2100-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // LM3
+    // Ces trois-la tournaient depuis des mois en ne comptant QUE sur le wildcard g2*,
+    // alors que les cinq du dessus etaient explicites — un oubli, pas un choix. Ids releves
+    // sur les conteneurs en production le 2026-08-23, pas devines.
+    snprintf(line, sizeof(line), "%s g23932a00-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // Mario Tennis Aces
+    snprintf(line, sizeof(line), "%s g25c08801-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // ARMS
+    snprintf(line, sizeof(line), "%s g2df33d01-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // Splatoon 2
     // --- Splatoon 3 / NPLN ---
     // Splatoon 3 n'utilise PAS NEX : il parle NPLN (gRPC sur HTTP/2), donc aucun
     // hote g2*.s.n. Les quatre premiers finissent par srv.nintendo.net et sont deja
@@ -700,6 +706,47 @@ void nextendo_backup_set_use_for_nintendo(bool on) {
     backupCfgRead(&pb, &u);
     (void)u;
     backupCfgWrite(pb, on ? 1 : 0);
+}
+
+// ============================================================================
+//  Etat des correctifs Splatoon 3
+// ----------------------------------------------------------------------------
+//  On compte les .ips presents dans les deux dossiers, cote CARTE et cote ROMFS.
+//  Deux nombres differents veulent dire que la carte porte encore ceux d'une
+//  version precedente : c'est exactement ce qui arrive quand on met Prelude a
+//  jour sans reappliquer le mode, et le joueur voit alors le meme code d'erreur
+//  en croyant que la mise a jour n'a rien fait.
+//
+//  Limite a annoncer honnetement : ceci dit ce qui est SUR LA CARTE, pas ce
+//  qu'Atmosphere a APPLIQUE. Un identifiant de build inconnu ne recoit rien, en
+//  silence, et aucun comptage de fichiers ne peut le voir.
+// ============================================================================
+static int countIps(const char *dir) {
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+    int n = 0;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        const char *dot = strrchr(e->d_name, '.');
+        if (dot && strcmp(dot, ".ips") == 0) n++;
+    }
+    closedir(d);
+    return n;
+}
+
+// Enveloppe publique : provision_all est interne, mais le demarrage doit pouvoir
+// rafraichir la carte sans passer par une bascule de mode complete.
+bool nextendo_provision_all_public(void) { return nextendo_provision_all(); }
+
+void nextendo_s3_status(NextendoS3Status *out) {
+    if (!out) return;
+    out->onSd = countIps("sdmc:/atmosphere/exefs_patches/s3certbypass") +
+                countIps("sdmc:/atmosphere/exefs_patches/s3peername");
+    out->inRomfs = countIps("romfs:/sd/atmosphere/exefs_patches/s3certbypass") +
+                   countIps("romfs:/sd/atmosphere/exefs_patches/s3peername");
+    // dns.mitm coupe = la console parle au VRAI Nintendo, et aucun correctif n'y peut rien.
+    out->dnsMitmOn = fileHas(NEXTENDO_SETTINGS_INI, "enable_dns_mitm = u8!0x1");
+    out->hostsOk   = (nextendo_current_mode() == 0);
 }
 
 bool nextendo_apply_nextendo_ip(const char *ip) {
