@@ -64,9 +64,9 @@ static const char *s_strings[STR_COUNT][4] = {
 
     // --- Update banner ---
     [STR_UPDATE_BANNER]      = { "MANDATORY update (v%d.%d.%d)   -   press Y to install",
-                                 "Actualizacion OBLIGATORIA (v%d)   -   presiona Y para instalar",
-                                 "Atualizacao OBRIGATORIA (v%d)   -   pressione Y para instalar",
-                                   "Mise à jour OBLIGATOIRE (v%d)   -   appuie sur Y pour installer" },
+                                 "Actualizacion OBLIGATORIA (v%d.%d.%d)   -   presiona Y para instalar",
+                                 "Atualizacao OBRIGATORIA (v%d.%d.%d)   -   pressione Y para instalar",
+                                   "Mise à jour OBLIGATOIRE (v%d.%d.%d)   -   appuie sur Y pour installer" },
 
     // --- Confirm screen ---
     [STR_CONFIRM_NEXTENDO]   = { "Switch to NEXTENDO mode?",
@@ -262,9 +262,9 @@ static const char *s_strings[STR_COUNT][4] = {
                                    "Atualizacao instalada",
                                    "Mise à jour installée" },
     [STR_STATUS_UPDATE_OK_DESC]    = { "CLOSE and relaunch Prelude to apply v%d.%d.%d.",
-                                        "CIERRA y reinicia Prelude para aplicar v%d.",
-                                        "FECHE e reinicie o Prelude para aplicar v%d.",
-                                   "FERME et relance Prelude pour appliquer la v%d." },
+                                        "CIERRA y reinicia Prelude para aplicar v%d.%d.%d.",
+                                        "FECHE e reinicie o Prelude para aplicar v%d.%d.%d.",
+                                   "FERME et relance Prelude pour appliquer la v%d.%d.%d." },
     [STR_STATUS_UPDATE_SIZE_FAIL]  = { "Download corrupted",
                                        "Descarga corrupta",
                                        "Download corrompido",
@@ -306,9 +306,9 @@ static const char *s_strings[STR_COUNT][4] = {
                                    "Atualizacao disponivel",
                                    "Mise à jour disponible" },
     [STR_UPD_CONFIRM_VERSION]  = { "New version: v%d.%d.%d",
-                                   "Nueva version: build %d",
-                                   "Nova versao: build %d",
-                                   "Nouvelle version : build %d" },
+                                   "Nueva version: v%d.%d.%d",
+                                   "Nova versao: v%d.%d.%d",
+                                   "Nouvelle version : v%d.%d.%d" },
     [STR_UPD_CONFIRM_DESC]    = { "Prelude will download and replace itself.",
                                   "Prelude descargara y se reemplazara a si mismo.",
                                   "Prelude baixara e substituira a si mesmo.",
