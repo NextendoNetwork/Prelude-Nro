@@ -371,7 +371,8 @@ static void extract_location(const unsigned char *hdr, size_t hlen, char *out, s
 // Necessite socketInitializeDefault() + sslInitialize() avant.
 // Retourne le nombre d'octets du corps ecrits, -1 si reseau, -2 si ecriture.
 long net_https_get_to_file(const char *host, const char *path,
-                            FILE *out, int *out_status) {
+                            FILE *out, int *out_status,
+                            net_progress_fn onProgress) {
     *out_status = 0;
 
     // cur_host / cur_path may be updated on redirect (CDN presigned URLs can be long)
@@ -449,6 +450,7 @@ long net_https_get_to_file(const char *host, const char *path,
                     }
                 }
                 bodyBytes += read;
+                if (onProgress && !is_redirect) onProgress(bodyBytes, contentLen > 0 ? contentLen : 0);
                 continue;
             }
             size_t i = 0;
@@ -488,6 +490,9 @@ long net_https_get_to_file(const char *host, const char *path,
                         }
                         bodyBytes += (long)rem;
                     }
+                    // Premier signalement des l'en-tete lue : la barre part a 0 % avec la
+                    // taille totale connue, au lieu d'apparaitre seulement au 2e paquet.
+                    if (onProgress) onProgress(bodyBytes, contentLen > 0 ? contentLen : 0);
                 }
             }
         }

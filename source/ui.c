@@ -496,7 +496,14 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
     // La barre de boutons dit ce que font les touches ICI et maintenant — pas une
     // liste fixe. C'est la moitie du travail d'une barre systeme.
     Hint h[4]; int n = 0;
-    if (paneFocused) {
+    if (updMaj > 0) {
+        // Verrou de MAJ obligatoire (main.c) : la navigation est morte, seuls Y et +/B
+        // repondent. La barre annoncait quand meme « A : Ouvrir » — donc l'utilisateur
+        // appuyait sur A, rien ne se passait, et le verrou se lisait comme un plantage.
+        // Une barre qui nomme une touche inerte est pire que pas de barre du tout.
+        h[n++] = (Hint){ "Y", lang_str(STR_HINT_UPDATE) };
+        h[n++] = (Hint){ "+", lang_str(STR_HINT_EXIT) };
+    } else if (paneFocused) {
         h[n++] = (Hint){ "A", lang_str(railSel == RAIL_MODE ? STR_HINT_APPLY : STR_HINT_CHANGE) };
         h[n++] = (Hint){ "B", lang_str(STR_HINT_BACK) };
     } else {
@@ -623,6 +630,36 @@ void ui_draw_progress(const char *line) {
     drawCF(b, st, s_semi, FB_W / 2, FB_H / 2 - SP_XS, FS_BIG, packColor(theme_text()), line);
     drawCF(b, st, s_reg, FB_W / 2, FB_H / 2 + SP_LG, FS_BODY, packColor(theme_text2()),
            lang_str(STR_PROGRESS_WAIT));
+    framebufferEnd(&s_fb);
+}
+
+// Barre de progression. La piste et le remplissage partagent le meme rayon : un
+// remplissage plus court que sa propre hauteur verrait ses coins arrondis degenerer,
+// on lui impose donc une largeur minimale des qu'il est non nul — sinon un
+// telechargement a 1 % ne dessine rien du tout et l'ecran a l'air fige, ce qui est
+// exactement ce que cette barre existe pour eviter.
+void ui_draw_progress_bar(const char *line, int pct, const char *detail) {
+    u32 st;
+    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
+    chromeClear(b, st);
+    chromeHeader(b, st, lang_str(STR_TITLE_PRELUDE), NULL);
+
+    drawCF(b, st, s_semi, FB_W / 2, FB_H / 2 - SP_LG, FS_BIG, packColor(theme_text()), line);
+
+    const int bw = 720, bh = 18;
+    const int bx = (FB_W - bw) / 2, by = FB_H / 2 + SP_XS;
+    roundedCard(b, st, bx, by, bw, bh, bh / 2, packColor(theme_pane()));
+
+    if (pct < 0)   pct = 0;
+    if (pct > 100) pct = 100;
+    int fw = (bw * pct) / 100;
+    if (fw > 0) {
+        if (fw < bh) fw = bh;
+        roundedCard(b, st, bx, by, fw, bh, bh / 2, packColor(theme_ok()));
+    }
+
+    drawCF(b, st, s_reg, FB_W / 2, by + bh + SP_LG, FS_BODY, packColor(theme_text2()),
+           detail ? detail : lang_str(STR_PROGRESS_WAIT));
     framebufferEnd(&s_fb);
 }
 

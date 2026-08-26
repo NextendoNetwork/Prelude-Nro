@@ -63,6 +63,10 @@ static const char *s_strings[STR_COUNT][4] = {
                                    "A : installer le planning       < > : changer de choix       B : quitter" },
 
     // --- Update banner ---
+    // Les trois traductions n'avaient qu'UN %d alors que l'appelant passe maj, min ET
+    // patch : elles affichaient « (v3) » au lieu de « (v3.3.9) ». Sans consequence pour
+    // varargs (les arguments en trop sont ignores), mais la version annoncee etait fausse
+    // partout sauf en anglais.
     [STR_UPDATE_BANNER]      = { "MANDATORY update (v%d.%d.%d)   -   press Y to install",
                                  "Actualizacion OBLIGATORIA (v%d.%d.%d)   -   presiona Y para instalar",
                                  "Atualizacao OBRIGATORIA (v%d.%d.%d)   -   pressione Y para instalar",
@@ -253,10 +257,18 @@ static const char *s_strings[STR_COUNT][4] = {
                                        "El servidor devolvio una respuesta inesperada.",
                                        "O servidor retornou uma resposta inesperada.",
                                    "Le serveur a renvoyé une réponse inattendue." },
+    [STR_CHECKING_UPDATE]          = { "Checking for updates...",
+                                       "Verificando actualizacion...",
+                                       "Verificando atualizacao...",
+                                   "Vérification de la mise à jour..." },
     [STR_STATUS_DOWNLOAD_UPDATE]   = { "Downloading update...",
                                        "Descargando actualizacion...",
                                        "Baixando atualizacao...",
                                    "Téléchargement de la mise à jour..." },
+    [STR_STATUS_INSTALL_UPDATE]    = { "Installing update...",
+                                       "Instalando actualizacion...",
+                                       "Instalando atualizacao...",
+                                   "Installation de la mise à jour..." },
     [STR_STATUS_UPDATE_OK]     = { "Update installed",
                                    "Actualizacion instalada",
                                    "Atualizacao instalada",
@@ -512,6 +524,7 @@ static const char *s_strings[STR_COUNT][4] = {
     [STR_HINT_BACK]   = { "Back",       "Volver",     "Voltar",     "Retour" },
     [STR_HINT_CHANGE] = { "Change",     "Cambiar",    "Alterar",    "Modifier" },
     [STR_HINT_OPEN]   = { "Open",       "Abrir",      "Abrir",      "Ouvrir" },
+    [STR_HINT_UPDATE] = { "Update",     "Actualizar", "Atualizar",  "Mettre à jour" },
     // --- Section SSBU ---
     [STR_S2_TITLE_MOD]       = { "Mod", "Mod", "Mod", "Mod" },
     [STR_SSBU_APPLIES]       = { "Applies on reboot in Nextendo mode",

@@ -53,6 +53,11 @@ void ui_draw_s2_info(void);
 // Ecran de progression pendant l'installation (une ligne d'etat centree).
 void ui_draw_progress(const char *line);
 
+// Idem, mais avec une barre de progression. `pct` est borne a 0..100 ; `detail` est
+// la ligne sous la barre (NULL => "Patiente..."). Sert aux operations longues ou un
+// ecran fige laisse croire que l'app est plantee (telechargement de 17 Mo de MAJ).
+void ui_draw_progress_bar(const char *line, int pct, const char *detail);
+
 // Ecran de resultat (succes vert / erreur rouge). A/B = retour.
 void ui_draw_result(const char *title, const char *msg, bool ok);
 

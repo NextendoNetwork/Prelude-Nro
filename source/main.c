@@ -91,6 +91,36 @@ static void writeExitLog(int lastScreen, const char *lastTitle, const char *last
     fsdevCommitDevice("sdmc");
 }
 
+// --- Progression de la mise a jour -------------------------------------------
+// Appele depuis la boucle de telechargement / de copie, donc sur le hilo principal :
+// on peut dessiner directement. On ne redessine QUE lorsque le pourcentage change,
+// sinon les 17 Mo declenchent ~550 presentations de framebuffer, chacune calee sur le
+// vsync — l'affichage couterait plus longtemps que le telechargement lui-meme.
+static int s_updLastPct = -1;
+static nextendo_update_phase s_updLastPhase = NUP_PHASE_DOWNLOAD;
+
+static void updateProgress(nextendo_update_phase phase, long done, long total) {
+    int pct = (total > 0) ? (int)((done * 100) / total) : 0;
+    if (pct > 100) pct = 100;
+    if (pct == s_updLastPct && phase == s_updLastPhase) return;
+    s_updLastPct   = pct;
+    s_updLastPhase = phase;
+
+    // Dixiemes de Mio en entier : pas de flottant pour une ligne d'etat.
+    char detail[64];
+    if (total > 0)
+        snprintf(detail, sizeof(detail), "%ld%%  -  %ld.%ld / %ld.%ld MiB", (long)pct,
+                 done / (1024 * 1024), (done * 10 / (1024 * 1024)) % 10,
+                 total / (1024 * 1024), (total * 10 / (1024 * 1024)) % 10);
+    else
+        snprintf(detail, sizeof(detail), "%ld.%ld MiB",
+                 done / (1024 * 1024), (done * 10 / (1024 * 1024)) % 10);
+
+    ui_draw_progress_bar(lang_str(phase == NUP_PHASE_INSTALL ? STR_STATUS_INSTALL_UPDATE
+                                                            : STR_STATUS_DOWNLOAD_UPDATE),
+                         pct, detail);
+}
+
 // --- Travail reseau du demarrage, hors du hilo principal ---------------------
 // Verif de MAJ + diagnostic reseau + warmup DNS prenaient plusieurs secondes en
 // bloquant le rendu : trois ecrans "Cargando..." avant de voir quoi que ce soit.
@@ -289,7 +319,7 @@ int main(int argc, char **argv) {
                 // En pratique le thread a fini bien avant qu'on arrive ici : l'attente
                 // ne se voit que si le reseau rame, et la elle est justifiee.
                 if (k && !bootPublished) {
-                    ui_draw_loading("Verificando actualizacion...");
+                    ui_draw_loading(lang_str(STR_CHECKING_UPDATE));
                     while (!s_boot.done) svcSleepThread(10000000ULL);  // 10 ms
                     upd = s_boot.upd;
                     bootPublished = true;
@@ -376,13 +406,21 @@ int main(int argc, char **argv) {
                         }
                     }
                 }
-                if (screen == SCREEN_PICKER && state == 0)
-                    ui_draw_picker(railSel, paneSel, paneFocus, current,
-                                   status[0] ? status : NULL,
-                                   upd.available ? upd.maj : 0,
-                                   upd.available ? upd.min : 0,
-                                   upd.available ? upd.patch : 0,
-                                   flagCurrent, ssbuInstalled, ssbuOcDisabled, &s3);
+                if (screen == SCREEN_PICKER && state == 0) {
+                    // Tant que le thread reseau n'a pas publie, l'ecran DIT qu'il verifie.
+                    // Avant, ce message n'existait que dans la branche `if (k && ...)`
+                    // ci-dessus : il fallait appuyer sur une touche pour le voir
+                    // apparaitre, et sans cela l'app semblait simplement lente a demarrer.
+                    if (!bootPublished)
+                        ui_draw_loading(lang_str(STR_CHECKING_UPDATE));
+                    else
+                        ui_draw_picker(railSel, paneSel, paneFocus, current,
+                                       status[0] ? status : NULL,
+                                       upd.available ? upd.maj : 0,
+                                       upd.available ? upd.min : 0,
+                                       upd.available ? upd.patch : 0,
+                                       flagCurrent, ssbuInstalled, ssbuOcDisabled, &s3);
+                }
 
                 // Toast du serveur
                 if (toastFrames > 0) {
@@ -526,9 +564,11 @@ int main(int argc, char **argv) {
             screen = SCREEN_S2_RESULT;
 
         } else if (screen == SCREEN_UPD_PROGRESS) {
-            ui_draw_progress(lang_str(STR_STATUS_DOWNLOAD_UPDATE));
+            ui_draw_progress_bar(lang_str(STR_STATUS_DOWNLOAD_UPDATE), 0, NULL);
             svcSleepThread(150000000ULL);
-            nextendo_update_result res = nextendo_update_apply(upd.size);
+            s_updLastPct = -1;   // une 2e tentative doit repartir de zero, pas du dernier %
+            s_updLastPhase = NUP_PHASE_DOWNLOAD;
+            nextendo_update_result res = nextendo_update_apply(upd.size, updateProgress);
             rOk = (res == NUP_OK);
             switch (res) {
                 case NUP_OK: {

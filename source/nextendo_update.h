@@ -449,14 +449,31 @@
 //           aller-retour reseau reel sur les 110 pays qui, eux, existent.
 //           Reponse a l issue #17 : la demande est legitime mais irrealisable par un patch
 //           ExeFS — il faudrait ajouter des textures au jeu, ce qui est un autre travail.
-#define NEXTENDO_BUILD 60
+// build 61 : v3.3.9 (re-publication). L'updater ne pouvait PAS aboutir : romfsInit()
+//           garde un handle FS ouvert sur le .nro en cours (le romfs est lu a la
+//           demande), donc l'updater essayait d'ecraser un fichier que nous tenions
+//           nous-memes ouvert. Les trois tentatives de remplacement echouaient d'affilee
+//           et l'ecran disait « impossible d'ecrire sur la carte SD » avec une mise a
+//           jour pourtant deja telechargee et verifiee. Cause reelle du rapport d'Andrei
+//           depuis 3.3.3 — soit exactement depuis le build 55, qui a fait passer la cible
+//           de « un chemin fixe » a « le fichier qu'on execute ». Avant 55 ca marchait par
+//           accident : on ecrasait un AUTRE fichier que celui qui tournait.
+//           Correction : releaseRomfs() avant la pose, restoreRomfs() apres, et chaque
+//           tentative trace desormais son errno.
+//           Aussi : barre de progression pendant le telechargement et la pose (17 Mo sans
+//           retour visuel se lisaient comme un plantage), ecran « verification de la mise
+//           a jour » affiche SANS attendre une touche (il n'existait que dans la branche
+//           declenchee par un appui, d'ou « il faut bouger le stick pour qu'il se
+//           rafraichisse »), et barre de boutons corrigee quand le verrou de MAJ est actif
+//           — elle annoncait « A : Ouvrir » alors que seul Y repond.
+#define NEXTENDO_BUILD 61
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
 // NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 3
-#define NEXTENDO_VERSION_PATCH 8
+#define NEXTENDO_VERSION_PATCH 9
 
 typedef struct {
     bool available;   // une version semver > NEXTENDO_VERSION_* est dispo
@@ -479,7 +496,19 @@ void nextendo_update_set_self_path(const char *argv0);
 
 NextendoUpdate nextendo_update_check(void);
 
-// Telecharge le nouveau .nro et remplace /switch/nextendo.nro (via un .new + rename).
-nextendo_update_result nextendo_update_apply(long expectedSize);
+// Progression d'une mise a jour. `phase` distingue les deux temps longs : le
+// telechargement (17 Mo) puis la pose du fichier sur la carte, qui n'est pas
+// instantanee non plus. `total` vaut 0 si la taille est inconnue.
+typedef enum {
+    NUP_PHASE_DOWNLOAD = 0,
+    NUP_PHASE_INSTALL  = 1,
+} nextendo_update_phase;
+
+typedef void (*nextendo_progress_fn)(nextendo_update_phase phase, long done, long total);
+
+// Telecharge le nouveau .nro et remplace celui qu'on execute (via un .new + rename).
+// `onProgress` peut etre NULL ; sinon il est appele assez souvent pour qu'un ecran
+// rafraichi dessus ne paraisse jamais fige.
+nextendo_update_result nextendo_update_apply(long expectedSize, nextendo_progress_fn onProgress);
 
 #endif // NEXTENDO_UPDATE_H

@@ -204,7 +204,7 @@ static int downloadZip(const char *titleIdLower) {
     if (!f) { logf_("  ECHEC fopen tmp %s", ZIP_TMP); return NET_ERR_SOCKET; }
 
     int status = 0;
-    long len = net_https_get_to_file(BCAT_HOST, apiPath, f, &status);
+    long len = net_https_get_to_file(BCAT_HOST, apiPath, f, &status, NULL);
     fclose(f);
     fsdevCommitDevice("sdmc");  // rend le zip visible/immediat pour miniz (sinon lecture tronquee)
 

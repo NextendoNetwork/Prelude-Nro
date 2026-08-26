@@ -25,10 +25,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <errno.h>     // trace du motif exact d'un echec d'ecriture
 
 #include "nextendo_update.h"
 #include "nextendo_net.h"
 #include "nextendo_apply.h"   // nextendo_trace : diagnostic de l'updater depuis la carte
+#include "audio.h"            // la BGM tient un FILE* ouvert sur le romfs (cf. releaseRomfs)
 
 // GitHub API for latest release
 #define GH_API_HOST  "api.github.com"
@@ -72,22 +74,89 @@ void nextendo_update_set_self_path(const char *argv0) {
 static const char *nroPath(void) { return g_self_nro[0] ? g_self_nro : LEGACY_NRO_FILE; }
 static const char *nroTmp(void)  { return g_self_tmp[0] ? g_self_tmp : LEGACY_TMP_FILE; }
 
+// --- Relais de progression. ---
+//  net_https_get_to_file ne connait que ce que le serveur annonce ; si Content-Length
+//  manque il rapporte total=0 et la barre resterait plate pendant 17 Mo. On retombe
+//  alors sur la taille que l'API GitHub nous a donnee, qu'on a de toute facon deja.
+static nextendo_progress_fn g_progress_cb    = NULL;
+static long                 g_progress_total = 0;
+
+static void progressRelay(long received, long total) {
+    if (total <= 0) total = g_progress_total;
+    if (g_progress_cb) g_progress_cb(NUP_PHASE_DOWNLOAD, received, total);
+}
+
 // Copie src -> dst en ECRASANT dst sans le supprimer d'abord. Renvoie false des que
 // l'ouverture ou une ecriture echoue, en laissant le soin a l'appelant d'essayer autre
 // chose : c'est la brique des trois tentatives de remplacement ci-dessous.
 static bool copyOver(const char *src, const char *dst) {
     FILE *in = fopen(src, "rb");
     if (!in) return false;
+    // La pose du fichier copie 17 Mo sur la carte : sans signalement, l'ecran reste
+    // fige sur 100 % de telechargement le temps de l'ecriture.
+    long copied = 0;
+    if (g_progress_cb) g_progress_cb(NUP_PHASE_INSTALL, 0, g_progress_total);
     FILE *out = fopen(dst, "wb");
-    if (!out) { fclose(in); return false; }
+    // errno est la seule chose qui distingue « cible verrouillee » de « carte pleine »
+    // dans la trace : on le met de cote avant chaque fclose(), qui a le droit de
+    // l'ecraser meme en reussissant.
+    if (!out) { int e = errno; fclose(in); errno = e; return false; }
     char cbuf[16384];
     size_t n;
     bool ok = true;
-    while ((n = fread(cbuf, 1, sizeof(cbuf), in)) > 0)
-        if (fwrite(cbuf, 1, n, out) != n) { ok = false; break; }
+    int err = 0;
+    while ((n = fread(cbuf, 1, sizeof(cbuf), in)) > 0) {
+        if (fwrite(cbuf, 1, n, out) != n) { err = errno; ok = false; break; }
+        copied += (long)n;
+        if (g_progress_cb) g_progress_cb(NUP_PHASE_INSTALL, copied, g_progress_total);
+    }
     fclose(in);
-    if (fclose(out) != 0) ok = false;   // erreur d'ecriture differee (carte pleine)
+    if (fclose(out) != 0) { if (ok) err = errno; ok = false; }   // ecriture differee
+    if (!ok) errno = err;
     return ok;
+}
+
+// Trace + motif exact de l'echec. Les trois tentatives de remplacement echouaient
+// toutes de la meme facon dans le rapport utilisateur (« impossible d'ecrire sur la
+// carte SD ») sans jamais dire POURQUOI : errno distingue un verrou (EBUSY / EACCES)
+// d'une carte pleine (ENOSPC) ou d'un chemin absent (ENOENT).
+static void traceErr(const char *step) {
+    char m[160];
+    snprintf(m, sizeof(m), "%s (errno=%d)", step, errno);
+    nextendo_trace(m);
+}
+
+// --- Liberation du romfs le temps du remplacement. ---
+//  romfsInit() (main) ne monte pas un fichier a part : libnx lit argv[0] et garde un
+//  handle FS OUVERT sur le .nro en cours pour toute la session, parce que le romfs est
+//  lu a la demande (patches .ips, donnees BCAT, bgm). Le fichier que l'updater doit
+//  remplacer est donc tenu ouvert par nous-memes : la FS refuse alors l'ouverture en
+//  ecriture, remove() et rename() echouent, les trois tentatives tombent d'affilee et
+//  l'utilisateur voit « impossible d'ecrire sur la carte SD » avec une mise a jour
+//  pourtant deja telechargee et verifiee.
+//
+//  C'est la vraie cause du rapport d'Andrei depuis 3.3.3 : le build 55 a fait passer la
+//  cible de « un chemin fixe » a « le fichier qu'on execute », et c'est precisement ce
+//  fichier-la que le romfs tient. Avant 55 ca marchait par accident — on ecrasait un
+//  AUTRE fichier que celui qui tournait (d'ou les doublons signales a l'epoque).
+//
+//  L'audio part en premier : mpg123 detient un FILE* ouvert sur romfs:/bgm.mp3 pendant
+//  toute la session. Les polices et les images, elles, sont deja entierement en RAM
+//  (ui_init lit dans un buffer puis ferme), donc l'ecran de resultat s'affiche sans
+//  romfs monte.
+static void releaseRomfs(void) {
+    audio_exit();    // ferme le FILE* que mpg123 tient sur romfs:/bgm.mp3
+    romfsExit();     // ferme le handle FS sur le .nro courant
+    nextendo_trace("59 update: romfs relache (le .nro cible n'est plus ouvert)");
+}
+
+// Remonte le romfs — depuis le .nro remplace s'il l'a ete, sinon l'ancien — et relance
+// la musique. Non-fatal : une MAJ reussie demande de toute facon de fermer et relancer
+// Prelude, mais un ECHEC doit laisser l'app entierement utilisable (changement de mode,
+// drapeaux, BCAT lisent tous le romfs).
+static void restoreRomfs(void) {
+    if (R_FAILED(romfsInit())) { nextendo_trace("69 WARN update: romfs non remonte"); return; }
+    audio_init();
 }
 
 static char g_download_url[512] = {0};
@@ -160,7 +229,18 @@ NextendoUpdate nextendo_update_check(void) {
 
     if (body && status == 200) {
         int maj = 0, min = 0, patch = 0; long sz = 0;
-        if (parse_github_json(body, len, &maj, &min, &patch, g_download_url, sizeof(g_download_url), &sz)) {
+        // parse_github_json travaille au strstr : le corps DOIT etre termine par un NUL.
+        // net_https_get renvoie exactement les octets du corps, sans terminateur — on
+        // lisait donc au-dela de l'allocation, avec le resultat que le tas voulait bien
+        // donner ce jour-la. On recopie dans un tampon terminé plutot que de faire
+        // confiance a ce qui suit le buffer.
+        char *json = (char *)malloc(len + 1);
+        if (json) {
+            memcpy(json, body, len);
+            json[len] = '\0';
+        }
+        if (json && parse_github_json((const unsigned char *)json, len, &maj, &min, &patch,
+                                      g_download_url, sizeof(g_download_url), &sz)) {
             if (semver_cmp(maj, min, patch,
                            NEXTENDO_VERSION_MAJOR, NEXTENDO_VERSION_MINOR, NEXTENDO_VERSION_PATCH) > 0
                 && sz > 4096) {
@@ -170,22 +250,26 @@ NextendoUpdate nextendo_update_check(void) {
                 g_download_size = sz;
             }
         }
+        free(json);
         free(body);
     }
     return u;
 }
 
 // Download and apply the update. Requires sslInitialize() before.
-nextendo_update_result nextendo_update_apply(long expectedSize) {
+nextendo_update_result nextendo_update_apply(long expectedSize, nextendo_progress_fn onProgress) {
     if (g_download_url[0] == '\0') return NUP_NET_FAIL;
     long expected = expectedSize > 0 ? expectedSize : g_download_size;
+
+    g_progress_cb    = onProgress;
+    g_progress_total = expected;
 
     FILE *f = fopen(nroTmp(), "wb");
     if (!f) {
         mkdir("sdmc:/switch", 0777);
         f = fopen(nroTmp(), "wb");
     }
-    if (!f) return NUP_WRITE_FAIL;
+    if (!f) { traceErr("57 ERREUR update: creation du .new impossible"); return NUP_WRITE_FAIL; }
 
     socketInitializeDefault();
     Result rc = sslInitialize(4);
@@ -198,12 +282,14 @@ nextendo_update_result nextendo_update_apply(long expectedSize) {
     }
 
     int status = 0;
-    long len = net_https_get_to_file(host, path, f, &status);
+    long len = net_https_get_to_file(host, path, f, &status,
+                                     onProgress ? progressRelay : NULL);
     fclose(f);
     sslExit();
     socketExit();
 
-    if (len == -2) { remove(nroTmp()); return NUP_WRITE_FAIL; }
+    if (len == -2) { traceErr("58 ERREUR update: ecriture du .new interrompue (carte pleine ?)");
+                     remove(nroTmp()); return NUP_WRITE_FAIL; }
     if (len < 0)   { remove(nroTmp()); return NUP_NET_FAIL; }
     if (status != 200 || len < 4096) { remove(nroTmp()); return NUP_NET_FAIL; }
     if (expected > 0 && len != expected) { remove(nroTmp()); return NUP_SIZE_FAIL; }
@@ -214,17 +300,22 @@ nextendo_update_result nextendo_update_apply(long expectedSize) {
     //  fichier qu'on est en train d'executer ». Le commentaire d'origine disait que
     //  l'ecrasement etait sans risque parce que le code tourne depuis la RAM ; c'etait
     //  gratuit tant que le fichier remplace n'etait PAS celui qu'on executait, et ca a
-    //  cesse de l'etre. Selon le chargeur de homebrew, le .nro en cours peut rester
-    //  ouvert : remove() echoue, rename() ne peut pas ecraser sur FAT32, l'ouverture en
-    //  ecriture est refusee, et l'utilisateur voit « impossible d'ecrire sur la SD »
-    //  avec une mise a jour pourtant deja telechargee. Rapporte par Andrei depuis 3.3.3.
+    //  cesse de l'etre : ce n'est PAS le chargeur de homebrew qui tient le fichier, c'est
+    //  NOUS. romfsInit() garde un handle FS ouvert sur le .nro courant pendant toute la
+    //  session (le romfs est lu a la demande), donc remove() echoue, rename() ne peut pas
+    //  ecraser, l'ouverture en ecriture est refusee, et l'utilisateur voit « impossible
+    //  d'ecrire sur la SD » avec une mise a jour pourtant deja telechargee et verifiee.
+    //  Rapporte par Andrei depuis 3.3.3 — soit exactement depuis le build 55.
     //
-    //  On ne renonce donc plus a la premiere resistance : ecrasement en place, puis
-    //  remove+rename, puis en dernier recours l'ancien emplacement fixe. Ce dernier
-    //  recours recree le doublon que le build 55 corrigeait — c'est assume : une mise a
-    //  jour installee ailleurs vaut mieux qu'une mise a jour perdue, et la trace dit
-    //  exactement ce qui s'est passe.
+    //  La correction tient dans releaseRomfs() : on lache le romfs le temps de poser le
+    //  fichier. Les trois tentatives restent en place derriere, comme filet, et chacune
+    //  trace desormais son errno — un echec qui subsisterait dirait enfin lequel.
     bool placed = false;
+
+    // Le .nro cible est OUVERT par notre propre romfs tant qu'on ne le relache pas :
+    // sans ca les trois tentatives ci-dessous echouent toutes, quelle que soit la carte.
+    releaseRomfs();
+    { char m[600]; snprintf(m, sizeof(m), "59b update: cible = %s", nroPath()); nextendo_trace(m); }
 
     // 1) Ecrasement EN PLACE, sans supprimer d'abord : si le fichier est verrouille en
     //    suppression mais ouvrable en ecriture, ce chemin passe la ou l'ancien echouait.
@@ -232,11 +323,13 @@ nextendo_update_result nextendo_update_apply(long expectedSize) {
         placed = true;
         remove(nroTmp());
         nextendo_trace("60 update: ecrase en place");
+    } else {
+        traceErr("60 update: ecrasement en place refuse");
     }
 
     // 2) remove + rename : le chemin historique, le plus propre quand il fonctionne.
     if (!placed) {
-        remove(nroPath());
+        if (remove(nroPath()) != 0) traceErr("61 update: remove de la cible refuse");
         if (rename(nroTmp(), nroPath()) == 0) {
             placed = true;
             nextendo_trace("61 update: remplace par rename");
@@ -244,6 +337,8 @@ nextendo_update_result nextendo_update_apply(long expectedSize) {
             placed = true;
             remove(nroTmp());
             nextendo_trace("62 update: remplace par copie apres remove");
+        } else {
+            traceErr("62 update: copie apres remove refusee");
         }
     }
 
@@ -255,14 +350,25 @@ nextendo_update_result nextendo_update_apply(long expectedSize) {
             placed = true;
             remove(nroTmp());
             nextendo_trace("63 WARN update: cible verrouillee -> ecrit dans switch/nextendo.nro");
+        } else {
+            traceErr("63 update: repli sur switch/nextendo.nro refuse");
         }
+    } else if (!placed) {
+        // Prelude EST deja a l'emplacement historique : il n'y a pas d'autre endroit ou
+        // se replier. Le dire, plutot que de sortir sans avoir rien tente de plus.
+        nextendo_trace("63 update: pas de repli possible (deja switch/nextendo.nro)");
     }
 
     if (!placed) {
         remove(nroTmp());
         nextendo_trace("64 ERREUR update: aucune ecriture possible");
+        restoreRomfs();
         return NUP_WRITE_FAIL;
     }
+
+    // Remonte le romfs sur le .nro qui vient d'etre remplace : l'app reste utilisable
+    // jusqu'a ce que l'utilisateur la ferme et la relance comme le lui dit l'ecran.
+    restoreRomfs();
 
     // Une mise a jour PRECEDENTE (avant ce correctif) a pu deposer une copie a l'ancien
     // emplacement fixe. Si ce n'est pas le fichier qu'on vient de remplacer, c'est un

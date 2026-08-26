@@ -46,10 +46,18 @@ long net_http_get_to_file(const char *ip, int port, const char *path, FILE *out,
 unsigned char *net_https_get(const char *host, const char *path,
                               size_t *out_len, int *out_status);
 
+// Progression d'un telechargement : `received` octets de CORPS recus, sur `total`
+// annonce par le serveur (0 si absent). Appele depuis la boucle de lecture — a garder
+// court, l'appelant s'en sert pour rafraichir l'ecran.
+typedef void (*net_progress_fn)(long received, long total);
+
 // HTTPS GET streaming fichier. Necessite socketInitializeDefault() + sslInitialize().
 // Retourne le nombre d'octets ecrits, -1 si reseau, -2 si ecriture.
+// `onProgress` peut etre NULL. Rien n'est signale pendant la reponse de redirection :
+// son corps est jete, le compter ferait reculer la barre au moment du saut vers le CDN.
 long net_https_get_to_file(const char *host, const char *path,
-                            FILE *out, int *out_status);
+                            FILE *out, int *out_status,
+                            net_progress_fn onProgress);
 
 // Dernier Result libnx d'un appel SSL ayant echoue (pour diagnostic).
 extern Result g_net_ssl_rc;

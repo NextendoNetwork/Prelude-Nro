@@ -102,7 +102,9 @@ typedef enum {
     STR_STATUS_NET_TIMEOUT_DESC, // "Server took too long to respond. Try again."
     STR_STATUS_NET_HTTP_ERR,    // "Server error"
     STR_STATUS_NET_HTTP_ERR_DESC, // "Server returned an unexpected response."
+    STR_CHECKING_UPDATE,        // "Checking for updates..."
     STR_STATUS_DOWNLOAD_UPDATE, // "Downloading update..."
+    STR_STATUS_INSTALL_UPDATE,  // "Installing update..."
     STR_STATUS_UPDATE_OK,       // "Update installed"
     STR_STATUS_UPDATE_OK_DESC,  // "CLOSE and relaunch Prelude to apply v%d.%d.%d."
     STR_STATUS_UPDATE_SIZE_FAIL,    // "Download corrupted"
@@ -191,6 +193,7 @@ typedef enum {
     STR_HINT_BACK,                    // "Back"
     STR_HINT_CHANGE,                  // "Change"
     STR_HINT_OPEN,                    // "Open"   (rail -> panneau)
+    STR_HINT_UPDATE,                  // "Update" (seule action possible sous verrou MAJ)
 
     // --- Section SSBU (lignes + interrupteur) ---
     STR_S2_TITLE_MOD,                 // "Mod"
