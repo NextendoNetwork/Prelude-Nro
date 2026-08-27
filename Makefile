@@ -18,7 +18,7 @@ ROMFS    := romfs
 APP_TITLE   := Prelude
 APP_AUTHOR  := Nextendo Network
 # X.Y.N ou N = NEXTENDO_BUILD (source/nextendo_update.h) : NACP, build interne et tag GitHub restent alignes.
-APP_VERSION := 3.3.9
+APP_VERSION := 3.3.8
 # Doit etre un JPEG 256x256 : hbmenu ne decode pas le PNG et affiche une tuile vide.
 APP_ICON    := icon.jpg
 
@@ -27,6 +27,11 @@ ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS := -g -Wall -Wextra -O2 -ffunction-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 $(ARCH) $(DEFINES)
 CFLAGS += $(INCLUDE) -D__SWITCH__
 CFLAGS += -I$(PORTLIBS)/include/freetype2 -Wno-format-truncation
+
+# Source unique de la version : le C la recoit d'ici, donc l'updater compare exactement ce
+# que le NACP affiche. Attendu en X.Y.Z ; un suffixe (3.3.8-rc1) ne compilerait pas.
+ver_parts := $(subst ., ,$(APP_VERSION))
+CFLAGS += -DNEXTENDO_VERSION_MAJOR=$(word 1,$(ver_parts)) -DNEXTENDO_VERSION_MINOR=$(word 2,$(ver_parts)) -DNEXTENDO_VERSION_PATCH=$(word 3,$(ver_parts))
 
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions
 

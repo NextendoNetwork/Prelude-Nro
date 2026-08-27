@@ -109,8 +109,17 @@ static void updateProgress(nextendo_update_phase phase, long done, long total) {
 static struct {
     NextendoUpdate  upd;
     int             mode;
-    volatile bool   done;
+    volatile bool   done;      // la reponse de l'updater est lisible
+    volatile bool   netDone;   // le thread a rendu les sockets
 } s_boot;
+
+// socketInitializeDefault()/socketExit() ne sont pas comptes : le socketExit() du thread de
+// demarrage fermerait la pile reseau sous les pieds d'un telechargement lance depuis le menu.
+// Depuis que `done` est publie AVANT le diagnostic, cette fenetre existe vraiment — c'est
+// exactement ce qui coupait une mise a jour a quelques pour cent.
+static void waitBootNet(void) {
+    while (!s_boot.netDone) svcSleepThread(10000000ULL);   // 10 ms
+}
 
 static Thread s_bootThread;
 
@@ -119,6 +128,13 @@ static void bootWorker(void *arg) {
     NextendoUpdate u = nextendo_update_check();
     nextendo_trace(u.available ? "14 update_check: MAJ DISPO -> homebrew verrouille (A inactif)"
                                : "14 update_check: a jour -> A actif");
+
+    // Publie DES QUE la reponse est connue. Tout ce qui suit est du diagnostic : le garder
+    // devant la publication faisait attendre l'interface jusqu'a ~10 s (le test BCAT a deux
+    // timeouts de 5 s) pour une trace que l'utilisateur ne lit jamais.
+    s_boot.upd  = u;
+    __asm__ __volatile__("dmb ish" ::: "memory");  // upd visible AVANT done
+    s_boot.done = true;
 
     // Diagnostic reseau : nncs2 + etat hosts (trace pour 2123-0011 / 2810-1224).
     socketInitializeDefault();
@@ -130,10 +146,8 @@ static void bootWorker(void *arg) {
                           : "15a dns warmup: accounts.nintendo.com FAIL");
     }
     socketExit();
-
-    s_boot.upd  = u;
-    __asm__ __volatile__("dmb ish" ::: "memory");  // upd visible AVANT done
-    s_boot.done = true;
+    __asm__ __volatile__("dmb ish" ::: "memory");
+    s_boot.netDone = true;
 }
 
 int main(int argc, char **argv) {
@@ -272,8 +286,9 @@ int main(int argc, char **argv) {
                 if (k & HidNpadButton_Plus) break;
                 if ((k & HidNpadButton_B) && !paneFocus) break;
 
-                // Seule une touche qui va CONSULTER upd attend le thread reseau : la navigation, elle, n'attend rien.
-                if (k && !bootPublished) {
+                // Seule une touche qui ACTIVE consulte le verrou de MAJ, et elle seule attend.
+                // La navigation et la sortie n'en dependent pas : les faire patienter etait gratuit.
+                if ((k & (HidNpadButton_A | HidNpadButton_Y)) && !bootPublished) {
                     ui_draw_loading(lang_str(STR_CHECKING_UPDATE));
                     while (!s_boot.done) svcSleepThread(10000000ULL);  // 10 ms
                     upd = s_boot.upd;
@@ -364,16 +379,16 @@ int main(int argc, char **argv) {
                     }
                 }
                 if (screen == SCREEN_PICKER && state == 0) {
-                    // Tant que le thread reseau n'a pas publie, l'ecran DIT qu'il verifie, sans attendre un appui.
-                    if (!bootPublished)
-                        ui_draw_loading(lang_str(STR_CHECKING_UPDATE));
-                    else
-                        ui_draw_picker(railSel, paneSel, paneFocus, current,
-                                       status[0] ? status : NULL,
-                                       upd.available ? upd.maj : 0,
-                                       upd.available ? upd.min : 0,
-                                       upd.available ? upd.patch : 0,
-                                       flagCurrent, ssbuInstalled, ssbuOcDisabled, &s3);
+                    // Le picker s'affiche TOUT DE SUITE et reste navigable : la verification se dit
+                    // dans la ligne d'etat au lieu de prendre l'ecran. Le bandeau apparait de lui-meme
+                    // quand le thread publie, ce pour quoi la publication passive existe.
+                    const char *ligne = status[0] ? status
+                                      : (!bootPublished ? lang_str(STR_CHECKING_UPDATE) : NULL);
+                    ui_draw_picker(railSel, paneSel, paneFocus, current, ligne,
+                                   upd.available ? upd.maj : 0,
+                                   upd.available ? upd.min : 0,
+                                   upd.available ? upd.patch : 0,
+                                   flagCurrent, ssbuInstalled, ssbuOcDisabled, &s3);
                 }
             } else {
                 if (k & (HidNpadButton_B | HidNpadButton_Plus)) {
@@ -462,6 +477,7 @@ int main(int argc, char **argv) {
         } else if (screen == SCREEN_S2_PROGRESS) {
             ui_draw_progress(lang_str(STR_STATUS_DOWNLOAD_SCHEDULE));
             svcSleepThread(150000000ULL);
+            waitBootNet();
             socketInitializeDefault();
             Result sslrc = sslInitialize(4);
             nextendo_bcat_result res = R_SUCCEEDED(sslrc) ? nextendo_bcat_install_s2() : NB_NET_FAIL;
@@ -507,6 +523,7 @@ int main(int argc, char **argv) {
         } else if (screen == SCREEN_UPD_PROGRESS) {
             ui_draw_progress_bar(lang_str(STR_STATUS_DOWNLOAD_UPDATE), 0, NULL);
             svcSleepThread(150000000ULL);
+            waitBootNet();
             s_updLastPct = -1;   // une 2e tentative doit repartir de zero, pas du dernier %
             s_updLastPhase = NUP_PHASE_DOWNLOAD;
             nextendo_update_result res = nextendo_update_apply(upd.size, updateProgress);
@@ -568,6 +585,7 @@ int main(int argc, char **argv) {
         } else if (screen == SCREEN_FLAG_PROGRESS) {
             ui_draw_progress(lang_str(STR_STATUS_DOWNLOAD_FLAG));
             svcSleepThread(150000000ULL);
+            waitBootNet();
             socketInitializeDefault();
             Result sslrc = sslInitialize(4);
             int frc = R_SUCCEEDED(sslrc) ? flag_install(g_flags[flagSel].code) : -1;
@@ -598,9 +616,9 @@ int main(int argc, char **argv) {
     }
 
     ui_exit();
-    // Le thread reseau doit etre fini avant qu'on parte : il ecrit s_boot et trace.
-    if (bootThreadOn) { while (!s_boot.done) svcSleepThread(10000000ULL);
-                        threadWaitForExit(&s_bootThread); threadClose(&s_bootThread); }
+    // Le thread doit etre fini avant qu'on parte : il trace encore pendant le diagnostic.
+    // Attendre `done` ne suffit plus : il est publie AVANT le diagnostic, pas a la fin du thread.
+    if (bootThreadOn) { threadWaitForExit(&s_bootThread); threadClose(&s_bootThread); }
     if (!bootPublished && s_boot.done) upd = s_boot.upd;   // le log doit voir le vrai etat
     writeExitLog(screen, rTitle, rMsg, rOk, boot, noEmummc, current, &upd);
     audio_exit();

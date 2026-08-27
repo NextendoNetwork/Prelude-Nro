@@ -36,6 +36,12 @@ jobs:
           path: nextendo.nro
           if-no-files-found: error
 
+      - name: Tag must match APP_VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          mk=$(sed -n 's/^APP_VERSION[[:space:]]*:=[[:space:]]*//p' Makefile)
+          [ "$mk" = "${GITHUB_REF_NAME#v}" ] || { echo "Makefile=$mk tag=${GITHUB_REF_NAME#v}"; exit 1; }
+
       - name: Upload NRO to release (if tagged)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
