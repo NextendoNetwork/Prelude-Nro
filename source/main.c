@@ -196,7 +196,6 @@ int main(int argc, char **argv) {
     // Séquence ↑↓←→ pour basculer l'IP du serveur.
     enum { SEQ_IDLE, SEQ_UP, SEQ_UP_DOWN, SEQ_UP_DOWN_LEFT };
     int seqState = SEQ_IDLE;
-    int toastFrames = 0;  // frames restantes d'affichage du toast
 
     // Dans un thread : le picker s'affiche immediatement et reste navigable pendant ce temps.
     s_boot.mode = current;
@@ -235,7 +234,7 @@ int main(int argc, char **argv) {
                 else
                     strncpy(g_server_ip, NEXTENDO_SERVER_IP_DEFAULT, NEXTENDO_SERVER_IP_MAX - 1);
                 g_server_ip[NEXTENDO_SERVER_IP_MAX - 1] = '\0';
-                toastFrames = 120;  // ~2 secondes à 60fps
+                ui_set_toast(server_display_name());
                 seqState = SEQ_IDLE;
             } else if (k) {
                 seqState = SEQ_IDLE;
@@ -338,12 +337,6 @@ int main(int argc, char **argv) {
                                        upd.available ? upd.min : 0,
                                        upd.available ? upd.patch : 0,
                                        flagCurrent, ssbuInstalled, ssbuOcDisabled, &s3);
-                }
-
-                // Toast du serveur
-                if (toastFrames > 0) {
-                    ui_draw_toast(server_display_name());
-                    toastFrames--;
                 }
             } else {
                 if (k & (HidNpadButton_B | HidNpadButton_Plus)) {

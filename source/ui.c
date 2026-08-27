@@ -296,6 +296,27 @@ void ui_exit(void) {
     if (s_rBuf) free(s_rBuf);
 }
 
+// Le toast ne peut pas etre une frame a lui : en double buffer il s'afficherait sur le buffer
+// precedent, une frame sur deux, ce qui clignote. Il est donc pose dans la frame du picker.
+static char s_toastText[96];
+static int  s_toastFrames;
+
+void ui_set_toast(const char *text) {
+    if (!text) { s_toastFrames = 0; return; }
+    snprintf(s_toastText, sizeof(s_toastText), "%s", text);
+    s_toastFrames = 120;   // ~2 secondes a 60fps
+}
+
+static void drawToast(u32 *b, u32 st) {
+    if (s_toastFrames <= 0) return;
+    int tw = measureF(s_semi, FS_BODY, s_toastText) + SP_LG * 2, th = 56;
+    int tx = (FB_W - tw) / 2, ty = FB_H - FTR_H - th - SP_MD;
+    roundedCard(b, st, tx, ty, tw, th, th / 2, packColor(theme_sel()));
+    drawCF(b, st, s_semi, FB_W / 2, ty + th / 2 + FS_BODY / 3, FS_BODY,
+           packColor(theme_text()), s_toastText);
+    s_toastFrames--;
+}
+
 // ------- Ecran principal : rail de navigation + panneau -------
 static const char *railLabel(int i) {
     switch (i) {
@@ -468,6 +489,7 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
         h[n++] = (Hint){ "+", lang_str(STR_HINT_EXIT) };
     }
     chromeFooter(b, st, h, n, NULL);
+    drawToast(b, st);
     framebufferEnd(&s_fb);
 }
 
@@ -676,17 +698,6 @@ void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch) {
 }
 
 // ------- Toast -------
-void ui_draw_toast(const char *text) {
-    u32 st;
-    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
-    int tw = measureF(s_semi, FS_BODY, text) + SP_LG * 2, th = 56;
-    int tx = (FB_W - tw) / 2, ty = FB_H - FTR_H - th - SP_MD;
-    roundedCard(b, st, tx, ty, tw, th, th / 2, packColor(theme_sel()));
-    drawCF(b, st, s_semi, FB_W / 2, ty + th / 2 + FS_BODY / 3, FS_BODY,
-           packColor(theme_text()), text);
-    framebufferEnd(&s_fb);
-}
-
 void ui_draw_loading(const char *text) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);

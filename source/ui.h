@@ -44,7 +44,8 @@ void ui_draw_progress_bar(const char *line, int pct, const char *detail);
 // Succes en vert, erreur en rouge.
 void ui_draw_result(const char *title, const char *msg, bool ok);
 
-void ui_draw_toast(const char *text);
+// Toast en bas de l'ecran : pose dans la frame du picker, jamais dans une frame a lui.
+void ui_set_toast(const char *text);
 
 void ui_draw_loading(const char *text);
 
