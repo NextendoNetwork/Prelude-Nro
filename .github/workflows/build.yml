@@ -20,10 +20,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          dkp-pacman -Syu --noconfirm \
+          # Only what the link line actually uses (see LIBS in the Makefile):
+          # libmpg123 and freetype2. switch-sdl2 / switch-sdl2_mixer were left
+          # over from before build 52 dropped SDL2 - never linked, but still
+          # able to fail the whole job when they move upstream.
+          dkp-pacman -Syu --noconfirm --needed \
             switch-freetype \
-            switch-sdl2 \
-            switch-sdl2_mixer \
             switch-mpg123
 
       - name: Build
