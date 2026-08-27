@@ -13,15 +13,15 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Logique systeme. Deux pieges verifies : fsdevCommitDevice("sdmc") AVANT tout reboot sinon les ecritures sont perdues,
-// et bpcRebootSystem() plutot que appletRequestToReboot, qui ne marche pas depuis hbmenu.
+// System logic. Two verified traps: fsdevCommitDevice("sdmc") BEFORE any reboot or the writes are lost,
+// and bpcRebootSystem() rather than appletRequestToReboot, which does not work from hbmenu.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <errno.h>
-#include <unistd.h>   // rmdir (purge des fichiers laisses par un ancien build)
+#include <unistd.h>   // rmdir (purging files left behind by an older build)
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -31,7 +31,7 @@
 #include "nextendo_config.h"
 #include "nextendo_hosts.h"
 #include "nextendo_net.h"
-#include "nextendo_update.h"  // NEXTENDO_BUILD : la question de sauvegarde se repose a chaque build
+#include "nextendo_update.h"  // NEXTENDO_BUILD: the backup question is re-asked on each build
 
 char g_server_ip[NEXTENDO_SERVER_IP_MAX] = NEXTENDO_SERVER_IP_DEFAULT;
 
@@ -45,25 +45,25 @@ const char *server_display_name(void) {
 #define NEXTENDO_EXOSPHERE_INI "sdmc:/exosphere.ini"
 #define NEXTENDO_TRACE NEXTENDO_TRACE_PATH
 
-// main et le thread reseau tracent en parallele : sans verrou, deux fopen/fputs/fclose concurrents entrelacent les lignes.
+// main and the network thread trace in parallel: without a lock, two concurrent fopen/fputs/fclose interleave the lines.
 static Mutex s_traceMtx;
 
 void nextendo_trace(const char *step) {
     mutexLock(&s_traceMtx);
     FILE *f = fopen(NEXTENDO_TRACE, "a");
     if (f) { fputs(step, f); fputc('\n', f); fclose(f); }
-    fsdevCommitDevice("sdmc");   // durable tout de suite : c'est le point de la trace
+    fsdevCommitDevice("sdmc");   // durable immediately: that is the whole point of the trace
     mutexUnlock(&s_traceMtx);
 }
 
-// mkdir -p : sur fsdev, mkdir ne cree pas les dossiers intermediaires.
+// mkdir -p: on fsdev, mkdir does not create intermediate directories.
 static Result ensureDir(const char *path) {
     char tmp[FS_MAX_PATH];
     size_t len = strnlen(path, sizeof(tmp) - 1);
     memcpy(tmp, path, len);
     tmp[len] = '\0';
 
-    char *p = strchr(tmp, ':');     // sauter le prefixe "sdmc:"
+    char *p = strchr(tmp, ':');     // skip the "sdmc:" prefix
     p = p ? p + 1 : tmp;
     if (*p == '/') p++;
 
@@ -112,33 +112,33 @@ char *nextendo_hosts_build(const char *ip) {
     snprintf(line, sizeof(line), "%s god.hac.lp1.penne.srv.nintendo.net\n", ip); EMIT_H(line);
     snprintf(line, sizeof(line), "%s dauth-lp1.ndas.srv.nintendo.net\n", ip);    EMIT_H(line);
     snprintf(line, sizeof(line), "%s aauth.hac.lp1.ndas.srv.nintendo.net\n", ip); EMIT_H(line);
-    // Les deux formes sont necessaires : *srv (sans point) matche les hotes multi-label que *.srv ne couvre pas.
+    // Both forms are needed: *srv (no dot) matches the multi-label hosts that *.srv does not cover.
     snprintf(line, sizeof(line), "%s    *.srv.nintendo.net\n", ip);       EMIT_H(line);
     snprintf(line, sizeof(line), "%s    *srv.nintendo.net\n", ip);        EMIT_H(line);
-    // g2* couvre tous les secure-servers NEX, mais le * mid-label est ignore sur certains builds : d'ou les hotes explicites.
+    // g2* covers every NEX secure server, but a mid-label * is ignored on some builds: hence the explicit hosts.
     snprintf(line, sizeof(line), "%s g2*.s.n.srv.nintendo.net\n", ip);         EMIT_H(line);
-    // MK8 vers la production, ou sont les joueurs. Doit rester APRES le wildcard g2* : derniere ligne qui matche gagne.
+    // MK8 to production, where the players are. Must stay AFTER the g2* wildcard: last matching line wins.
     snprintf(line, sizeof(line), "%s g2b309e01-lp1.s.n.srv.nintendo.net\n", NEXTENDO_SERVER_IP_NNCSD2); EMIT_H(line); // MK8 -> 164
     snprintf(line, sizeof(line), "%s g23380901-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // SSBU
     snprintf(line, sizeof(line), "%s g2ee2e300-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // ACNH
     snprintf(line, sizeof(line), "%s g26cfaf00-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // Strikers
     snprintf(line, sizeof(line), "%s g20de2100-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // LM3
-    // Ids releves sur les conteneurs en production, pas devines.
+    // Ids read off the production containers, not guessed.
     snprintf(line, sizeof(line), "%s g23932a00-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // Mario Tennis Aces
     snprintf(line, sizeof(line), "%s g25c08801-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // ARMS
     snprintf(line, sizeof(line), "%s g2df33d01-lp1.s.n.srv.nintendo.net\n", ip); EMIT_H(line); // Splatoon 2
-    // Splatoon 3 parle NPLN (gRPC sur HTTP/2), pas NEX : aucun hote g2*.s.n. Explicites pour la meme raison que ci-dessus.
+    // Splatoon 3 speaks NPLN (gRPC over HTTP/2), not NEX: no g2*.s.n host at all. Explicit for the same reason as above.
     snprintf(line, sizeof(line), "%s t-dce9377b-lp1.lp1.t.npln.srv.nintendo.net\n", ip); EMIT_H(line);
     snprintf(line, sizeof(line), "%s t-adf89f68-lp1.lp1.t.npln.srv.nintendo.net\n", ip); EMIT_H(line);
     snprintf(line, sizeof(line), "%s gw.hac.lp1.vermillion.srv.nintendo.net\n", ip);     EMIT_H(line);
     snprintf(line, sizeof(line), "%s val.hac.lp1.penne.srv.nintendo.net\n", ip);         EMIT_H(line);
     snprintf(line, sizeof(line), "%s fro-3.hac.lp1.penne.srv.nintendo.net\n", ip);       EMIT_H(line);
-    // dragons finit par .nintendo.net et non srv.nintendo.net : aucun wildcard ne le prend, sans cette ligne il part chez Nintendo.
+    // dragons ends in .nintendo.net, not srv.nintendo.net: no wildcard catches it, and without this line it goes to Nintendo.
     snprintf(line, sizeof(line), "%s dragons.hac.lp1.dragons.nintendo.net\n", ip);       EMIT_H(line);
-    // gamesync porte le lobby lui-meme (KeepUserSession sur TCP/7575) et echappe au wildcard *srv : sans lui le tenant repond mais aucune partie ne demarre.
+    // gamesync carries the lobby itself (KeepUserSession over TCP/7575) and escapes the *srv wildcard: without it the tenant answers but no match ever starts.
     snprintf(line, sizeof(line), "%s    *.npln.nintendo.net\n", ip);                     EMIT_H(line);
     snprintf(line, sizeof(line), "%s gamesync.npln.nintendo.net\n", ip);                 EMIT_H(line);
-    // *.op2.nintendo.net retire : trop large, il attrapait des sous-domaines non geres par le VPS -> 2219-4001 sur ACNH.
+    // *.op2.nintendo.net removed: too broad, it caught subdomains the VPS does not serve -> 2219-4001 on ACNH.
 
     EMIT_H("\n# --- 2) NAT-check #2 : IP differente de nncs1 (sinon MK8 test-103) ---\n");
     snprintf(line, sizeof(line), "%s  nncs2-*.n.n.srv.nintendo.net\n", nncs2_ip); EMIT_H(line);
@@ -169,7 +169,7 @@ static bool writeTextFile(const char *path, const char *contents) {
     return ok;
 }
 
-// Parser ligne a ligne : toutes les autres cles et sections de system_settings.ini sont preservees.
+// Line-by-line parser: every other key and section of system_settings.ini is preserved.
 static bool iniSetDnsMitm(bool enable, bool addDefaults) {
     static const char *K1 = "enable_dns_mitm";
     static const char *K2 = "add_defaults_to_dns_hosts";
@@ -189,7 +189,7 @@ static bool iniSetDnsMitm(bool enable, bool addDefaults) {
         if (sz > 0) {
             size_t nr = fread(buf, 1, sz, f);
             if (nr != (size_t)sz) {
-                // Lecture partielle -> fichier corrompu, on le traite comme inexistant.
+                // Partial read -> corrupt file, so we treat it as if it did not exist.
                 free(buf); buf = NULL; sz = 0;
             }
         }
@@ -256,8 +256,8 @@ static bool iniSetDnsMitm(bool enable, bool addDefaults) {
     return ok;
 }
 
-// blank_prodinfo_emummc : 0 en mode NEXTENDO (vrai cert device, confine par le DNS-MITM -> fix 2123-0011), 1 en mode NINTENDO (identite blanche, anti-ban).
-// Lu par exosphere au BOOT et n'affecte QUE les boots emuMMC : blank_prodinfo_sysmmc n'est jamais touche.
+// blank_prodinfo_emummc: 0 in NEXTENDO mode (real device cert, confined by DNS-MITM -> fixes 2123-0011), 1 in NINTENDO mode (blank identity, anti-ban).
+// Read by exosphere at BOOT and affects ONLY emuMMC boots: blank_prodinfo_sysmmc is never touched.
 static bool iniSetBlankProdinfoEmummc(bool blank) {
     static const char *K = "blank_prodinfo_emummc";
     const char *V = blank ? "blank_prodinfo_emummc=1\n" : "blank_prodinfo_emummc=0\n";
@@ -271,7 +271,7 @@ static bool iniSetBlankProdinfoEmummc(bool blank) {
         if (sz > 0) {
             size_t nr = fread(buf, 1, sz, f);
             if (nr != (size_t)sz) {
-                // Lecture partielle -> fichier corrompu, on le traite comme inexistant.
+                // Partial read -> corrupt file, so we treat it as if it did not exist.
                 free(buf); buf = NULL; sz = 0;
             }
         }
@@ -330,7 +330,7 @@ static bool iniSetBlankProdinfoEmummc(bool blank) {
     return ok;
 }
 
-// NEXTENDO si un fichier hosts redirige encore vers notre VPS, sinon NINTENDO.
+// NEXTENDO if a hosts file still redirects to our VPS, otherwise NINTENDO.
 static bool fileHas(const char *path, const char *needle) {
     FILE *f = fopen(path, "rb");
     if (!f) return false;
@@ -361,7 +361,7 @@ BootType nextendo_detect_boot(void) {
     return (val != 0) ? BOOT_EMUMMC : BOOT_SYSMMC;
 }
 
-// Copie fichier romfs -> SD.
+// File copy, romfs -> SD.
 static bool copyFile(const char *src, const char *dst) {
     FILE *in = fopen(src, "rb");
     if (!in) return false;
@@ -375,7 +375,7 @@ static bool copyFile(const char *src, const char *dst) {
     return ok;
 }
 
-// Copie recursive romfs -> SD. On ECRASE (les patches sont idempotents) pour qu'une MAJ du .nro propage bien les derniers.
+// Recursive copy, romfs -> SD. We OVERWRITE (the patches are idempotent) so a .nro update really propagates the latest ones.
 static bool copyTreeRomfs(const char *srcDir, const char *dstDir) {
     DIR *d = opendir(srcDir);
     if (!d) return false;
@@ -397,8 +397,8 @@ static bool copyTreeRomfs(const char *srcDir, const char *dstDir) {
     return true;
 }
 
-// Miroir exact de copyTreeRomfs : se caler sur le romfs plutot qu'une liste en dur garde la purge synchronisee avec ce qu'on installe.
-// rmdir echoue si le dossier n'est pas vide, ce qui PRESERVE tout dossier ou l'utilisateur a mis autre chose.
+// Exact mirror of copyTreeRomfs: keying off the romfs rather than a hardcoded list keeps the purge in sync with what we install.
+// rmdir fails on a non-empty directory, which PRESERVES any folder where the user put something else.
 static bool removeTreeRomfs(const char *srcDir, const char *dstDir) {
     DIR *d = opendir(srcDir);
     if (!d) return false;
@@ -411,7 +411,7 @@ static bool removeTreeRomfs(const char *srcDir, const char *dstDir) {
         struct stat st;
         if (stat(sp, &st) == 0 && S_ISDIR(st.st_mode)) {
             removeTreeRomfs(sp, dp);
-            rmdir(dp);                  // vide seulement -> sinon conserve
+            rmdir(dp);                  // only when empty -> otherwise kept
         } else {
             remove(dp);
         }
@@ -420,7 +420,7 @@ static bool removeTreeRomfs(const char *srcDir, const char *dstDir) {
     return true;
 }
 
-// Retire ce qui laisse l'IP du VPS lisible sur la carte : les deux logs DNS-MITM (Atmosphere y ecrit la table des redirections et notre IP a chaque requete) et les *.txt.bak, jamais relus.
+// Removes whatever leaves the VPS IP readable on the card: both DNS-MITM logs (Atmosphere writes the redirect table and our IP on every query there) and the *.txt.bak files, which are never read back.
 static void nextendo_purge_leaks(void) {
     remove("sdmc:/atmosphere/logs/dns_mitm_startup.log");
     remove("sdmc:/atmosphere/logs/dns_mitm_debug.log");
@@ -433,21 +433,21 @@ static bool fileExists(const char *path) {
     return stat(path, &st) == 0;
 }
 
-// Provisionne le stack cert-trust (romfs -> SD) pour un mode Nextendo fonctionnel sans install manuelle.
-// Tout est gate par build-id firmware : seul ce qui matche la console s'applique, le reste dort.
+// Provisions the cert-trust stack (romfs -> SD) so Nextendo mode works with no manual install.
+// Everything is gated by firmware build id: only what matches the console applies, the rest lies dormant.
 
-// Orphelins d'ANCIENS builds : copyTreeRomfs n'ecrit que le romfs COURANT, donc ce qu'on a cesse de livrer reste sur la SD indefiniment.
-// Le plus grave est network_mitm, qui intercepte tout le SSL au boot : un vieux Prelude laisse donc un MITM actif face aux VRAIS serveurs Nintendo (2137-7403).
-// Fichiers d'abord, dossiers ensuite ; tout est best-effort, un ENOENT est le cas NORMAL sur une installation neuve.
+// Orphans from OLD builds: copyTreeRomfs only writes the CURRENT romfs, so anything we stopped shipping stays on the SD card forever.
+// The worst is network_mitm, which intercepts all SSL at boot: an old Prelude therefore leaves a live MITM facing the REAL Nintendo servers (2137-7403).
+// Files first, directories after; all best-effort, and an ENOENT is the NORMAL case on a fresh install.
 static const char *const NEXTENDO_STALE_FILES[] = {
-    // network_mitm (MITM ssl/ssl:s au boot), retire au build 4.
+    // network_mitm (MITM on ssl/ssl:s at boot), dropped in build 4.
     "sdmc:/atmosphere/contents/4200000000000666/flags/boot2.flag",
     "sdmc:/atmosphere/contents/4200000000000666/mitm.lst",
     "sdmc:/atmosphere/contents/4200000000000666/exefs.nsp",
-    // Anciens emplacements du bundle CA du navigateur.
+    // Old locations of the browser CA bundle.
     "sdmc:/atmosphere/contents/0100000000000803/romfs/openssl_peer/cacerts.pem",
     "sdmc:/atmosphere/contents/0100000000000803/romfs/nro/netfront/openssl_peer/cacerts.pem",
-    // Patch navigateur d'un build-id qui n'est plus cible.
+    // Browser patch for a build id we no longer target.
     "sdmc:/atmosphere/nro_patches/disable_browser_ca_verification/C338171E72636A2D77418E02F45E75D9F3090B.ips",
 };
 
@@ -460,7 +460,7 @@ static const char *const NEXTENDO_STALE_DIRS[] = {
     "sdmc:/atmosphere/contents/0100000000000803/romfs/nro",
 };
 
-// Renvoie le nombre de fichiers reellement supprimes (0 = installation deja propre ou neuve).
+// Returns the number of files actually removed (0 = already clean, or a fresh install).
 static int nextendo_purge_stale(void) {
     int removed = 0;
     for (size_t i = 0; i < sizeof(NEXTENDO_STALE_FILES) / sizeof(NEXTENDO_STALE_FILES[0]); i++)
@@ -476,9 +476,9 @@ static bool nextendo_provision_all(void) {
     return true;
 }
 
-// Sauvegarde des hosts dns.mitm de l'utilisateur : le mode NINTENDO les SUPPRIME, donc on les copie une fois avant d'ecrire quoi que ce soit.
-// La copie vit dans sdmc:/switch/ et non dans atmosphere/hosts/, que purge_leaks nettoie et qu'Atmosphere lit.
-// REGLE DE SECURITE : on ne sauvegarde JAMAIS un fichier portant l'IP du VPS, sinon la copie ferait ce que purge_leaks existe pour empecher.
+// Backup of the user's dns.mitm hosts: NINTENDO mode DELETES them, so we copy them once before writing anything.
+// The copy lives in sdmc:/switch/, not in atmosphere/hosts/, which purge_leaks cleans and Atmosphere reads.
+// SECURITY RULE: NEVER back up a file carrying the VPS IP, or the copy would do the very thing purge_leaks exists to prevent.
 #define NEXTENDO_BACKUP_DIR    "sdmc:/switch/prelude_hosts_backup"
 #define NEXTENDO_BACKUP_SYSMMC NEXTENDO_BACKUP_DIR "/sysmmc.txt"
 #define NEXTENDO_BACKUP_EMUMMC NEXTENDO_BACKUP_DIR "/emummc.txt"
@@ -497,13 +497,13 @@ static bool copyFileRaw(const char *src, const char *dst) {
     }
     fclose(in);
     fclose(out);
-    if (!ok) remove(dst);   // pas de demi-copie sur la carte
+    if (!ok) remove(dst);   // no half-written copy left on the card
     return ok;
 }
 
-// Sauvegardable = le fichier existe ET n'est pas un fichier que NOUS avons ecrit.
-// Reconnu d'abord a l'EN-TETE, presente dans TOUT fichier genere par Prelude : un filtre sur les seules IP courantes laisserait passer un hosts d'une version tres ancienne, qu'on restaurerait vers un serveur mort.
-// Les IP sont testees ensuite, pour un fichier bricole a la main qui aurait perdu l'en-tete.
+// Backup-worthy = the file exists AND is not one WE wrote.
+// Recognised first by the HEADER, present in EVERY file Prelude generates: a filter on the current IPs alone would let through a hosts file from a very old version, which we would then restore towards a dead server.
+// The IPs are checked afterwards, for a hand-edited file that lost the header.
 static bool backupCandidateOk(const char *path) {
     if (!fileExists(path)) return false;
     if (fileHas(path, NEXTENDO_HOSTS_HEADER_MARK)) return false;
@@ -532,7 +532,7 @@ int nextendo_hosts_backup_create(void) {
 int nextendo_hosts_backup_restore(void) {
     if (R_FAILED(ensureDir(NEXTENDO_HOSTS_DIR))) return 0;
     int n = 0;
-    // Revalidee AVANT restauration, pas seulement a la creation : c'est ce qui repare les copies deja fabriquees par une version anterieure, sans rien demander a l'utilisateur.
+    // Re-validated BEFORE restoring, not only at creation: that is what repairs copies an earlier version already made, without asking the user anything.
     if (backupCandidateOk(NEXTENDO_BACKUP_SYSMMC) &&
         copyFileRaw(NEXTENDO_BACKUP_SYSMMC, NEXTENDO_HOSTS_SYSMMC)) n++;
     if (backupCandidateOk(NEXTENDO_BACKUP_EMUMMC) &&
@@ -540,9 +540,9 @@ int nextendo_hosts_backup_restore(void) {
     return n;
 }
 
-// prelude_backup.cfg : une cle par ligne.
-//   prompt_build     dernier build ayant POSE la question (0 = jamais)
-//   use_for_nintendo 1 = remettre la sauvegarde au passage en mode NINTENDO
+// prelude_backup.cfg: one key per line.
+//   prompt_build     last build that ASKED the question (0 = never)
+//   use_for_nintendo 1 = restore the backup when switching to NINTENDO mode
 static void backupCfgRead(int *promptBuild, int *useForNintendo) {
     *promptBuild = 0;
     *useForNintendo = 0;
@@ -568,7 +568,7 @@ static bool backupCfgWrite(int promptBuild, int useForNintendo) {
     return ok;
 }
 
-// Posee UNE SEULE FOIS : apres la reponse, les hosts d'origine sont soit sauvegardes soit ecrases, et redemander n'afficherait plus que "rien a sauvegarder".
+// Asked ONCE ONLY: after the answer the original hosts are either saved or overwritten, and asking again would only ever show "nothing to back up".
 bool nextendo_backup_prompt_needed(void) {
     int pb, u;
     backupCfgRead(&pb, &u);
@@ -596,8 +596,8 @@ void nextendo_backup_set_use_for_nintendo(bool on) {
     backupCfgWrite(pb, on ? 1 : 0);
 }
 
-// Compte les .ips cote CARTE et cote ROMFS : deux nombres differents = la carte porte encore ceux d'une version precedente.
-// Limite a annoncer honnetement : ceci dit ce qui est sur la carte, pas ce qu'Atmosphere a APPLIQUE — un build id inconnu ne recoit rien, en silence.
+// Counts the .ips files on the CARD and in the ROMFS: two different numbers mean the card still holds a previous version's.
+// A limit worth stating plainly: this reports what is on the card, not what Atmosphere APPLIED — an unknown build id gets nothing, silently.
 static int countIps(const char *dir) {
     DIR *d = opendir(dir);
     if (!d) return 0;
@@ -611,7 +611,7 @@ static int countIps(const char *dir) {
     return n;
 }
 
-// provision_all est interne, mais le demarrage doit pouvoir rafraichir la carte sans bascule de mode complete.
+// provision_all is internal, but startup must be able to refresh the card without a full mode switch.
 bool nextendo_provision_all_public(void) { return nextendo_provision_all(); }
 
 void nextendo_s3_status(NextendoS3Status *out) {
@@ -620,7 +620,7 @@ void nextendo_s3_status(NextendoS3Status *out) {
                 countIps("sdmc:/atmosphere/exefs_patches/s3peername");
     out->inRomfs = countIps("romfs:/sd/atmosphere/exefs_patches/s3certbypass") +
                    countIps("romfs:/sd/atmosphere/exefs_patches/s3peername");
-    // dns.mitm coupe = la console parle au VRAI Nintendo, et aucun correctif n'y peut rien.
+    // dns.mitm off = the console talks to the REAL Nintendo, and no patch can help with that.
     out->dnsMitmOn = fileHas(NEXTENDO_SETTINGS_INI, "enable_dns_mitm = u8!0x1");
     out->hostsOk   = (nextendo_current_mode() == 0);
 }
@@ -636,8 +636,8 @@ bool nextendo_apply_nextendo_ip(const char *ip) {
     bool a = writeTextFile(NEXTENDO_HOSTS_SYSMMC, hosts);
     bool b = writeTextFile(NEXTENDO_HOSTS_EMUMMC, hosts);
     free(hosts);
-    // add_defaults=1 comme en mode NINTENDO : on ne maintient pas notre propre liste de telemetrie, celle d'Atmosphere est suivie en amont.
-    // Sans conflit avec nos redirections : les defauts ne couvrent que receive-%, jamais accounts.nintendo.com ni les hotes de jeu.
+    // add_defaults=1 as in NINTENDO mode: we do not maintain our own telemetry list, Atmosphere's is tracked upstream.
+    // No conflict with our redirects: the defaults only cover receive-%, never accounts.nintendo.com nor the game hosts.
     bool i = iniSetDnsMitm(true, true);
     bool p = iniSetBlankProdinfoEmummc(false);
     if (!p) nextendo_trace("29 WARN: iniSetBlankProdinfoEmummc(false) a echoue -> risque 2123-0011");
@@ -652,11 +652,11 @@ bool nextendo_apply_nextendo(void) {
 
 bool nextendo_apply_nintendo(void) {
     nextendo_trace("20 apply_nintendo: entree");
-    // SUPPRIMES, pas renommes : le .bak n'etait jamais relu et ne servait qu'a garder l'IP du VPS lisible sur la carte.
+    // DELETED, not renamed: the .bak was never read back and only kept the VPS IP readable on the card.
     remove(NEXTENDO_HOSTS_SYSMMC);
     remove(NEXTENDO_HOSTS_EMUMMC);
     nextendo_trace("21 hosts supprimes");
-    // Remises APRES la suppression. La sauvegarde ayant ete refusee si elle portait une de nos IP, rien de Nextendo ne revient par ce chemin.
+    // Restored AFTER the deletion. Since the backup was refused if it carried one of our IPs, nothing of Nextendo comes back this way.
     if (nextendo_backup_use_for_nintendo() && nextendo_hosts_backup_exists()) {
         int nb = nextendo_hosts_backup_restore();
         nextendo_trace(nb ? "21b hosts utilisateur restaures"
@@ -665,11 +665,11 @@ bool nextendo_apply_nintendo(void) {
     nextendo_purge_leaks();
     nextendo_trace("22 purge_leaks ok");
 
-    // Couper dns_mitm ne suffit pas : le network_mitm d'un vieux build demarre via boot2.flag et laisserait un MITM SSL face aux VRAIS serveurs (2137-7403).
+    // Turning dns_mitm off is not enough: an old build's network_mitm starts via boot2.flag and would leave an SSL MITM facing the REAL servers (2137-7403).
     nextendo_purge_stale();
     nextendo_trace("23 purge_stale ok");
 
-    // Le stack cert-trust survivait a la bascule : la verif des certificats restait coupee et notre CA de confiance face au VRAI Nintendo. provision_all() repose tout au retour.
+    // The cert-trust stack survived the switch: certificate checking stayed off and our CA stayed trusted, facing the REAL Nintendo. provision_all() puts it all back on return.
     if (!removeTreeRomfs("romfs:/sd", "sdmc:")) {
         nextendo_trace("24b removeTreeRomfs a echoue");
         return false;
@@ -678,27 +678,27 @@ bool nextendo_apply_nintendo(void) {
     removeTreeRomfs("romfs:/ssbu_quickplay", "sdmc:"); // SSBU online-deluxe mod
     nextendo_trace("24c ssbu_quickplay retire");
 
-    // DNS-MITM laisse ACTIF avec add_defaults=1 : couper dns_mitm desactiverait aussi le blocage de telemetrie natif, rendant la console MOINS protegee qu'une install d'origine.
-    // Les entrees par defaut sont COMPILEES dans le sysmodule DNS.mitm, pas lues d'un fichier : ne PAS ecrire notre propre default.txt, il appartient a l'utilisateur et deriverait derriere celui d'Atmosphere.
-    // Garde-fou : si nos hosts resistent a l'effacement, on retombe sur dns_mitm=0, qui les neutralise a coup sur.
+    // DNS-MITM left ACTIVE with add_defaults=1: turning dns_mitm off would also disable the native telemetry blocking, leaving the console LESS protected than a stock install.
+    // The default entries are COMPILED INTO the DNS.mitm sysmodule, not read from a file: do NOT write our own default.txt, it belongs to the user and would drift behind Atmosphere's.
+    // Safety net: if our hosts resist deletion, we fall back to dns_mitm=0, which neutralises them for certain.
     bool hostsGone = !fileExists(NEXTENDO_HOSTS_SYSMMC) && !fileExists(NEXTENDO_HOSTS_EMUMMC);
     bool i = hostsGone ? iniSetDnsMitm(true, true) : iniSetDnsMitm(false, false);
     nextendo_trace(hostsGone ? "25 ini ok (hosts partis, dns_mitm garde actif)"
                              : "25 ini ok (SECOURS : hosts resistants, dns_mitm coupe)");
 
     iniSetBlankProdinfoEmummc(true);     // emuMMC : PRODINFO blanchi -> anti-ban si online vrai Nintendo
-                                         // (sans effet sur une console sysNAND-only : l'UI previent)
+                                         // (no effect on a sysNAND-only console: the UI says so)
     nextendo_trace("26 blank_prodinfo ok");
     fsdevCommitDevice("sdmc");
     nextendo_trace("27 apply_nintendo: TERMINE");
     return i;
 }
 
-// Diagnostic reseau : trace les infos utiles pour 2123-0011 / 2810-1224.
+// Network diagnostics: traces the information that matters for 2123-0011 / 2810-1224.
 void nextendo_diag_network(void) {
     char buf[128];
     
-    // Ne verifie que la validite de l'adresse : un vrai test Pia demanderait d'echanger le protocole NEX.
+    // Only checks that the address is valid: a real Pia test would require speaking the NEX protocol.
     {
         int fd = socket(AF_INET, SOCK_DGRAM, 0);
         if (fd >= 0) {
@@ -732,7 +732,7 @@ void nextendo_diag_network(void) {
         nextendo_trace(buf);
     }
 
-    // nncs1 PIA connectivity test (UDP vers le VPS principal, port 10024 + 10025).
+    // nncs1 PIA connectivity test (UDP to the main VPS, ports 10024 + 10025).
     {
         int fd = socket(AF_INET, SOCK_DGRAM, 0);
         if (fd >= 0) {
@@ -766,7 +766,7 @@ void nextendo_diag_network(void) {
         nextendo_trace(buf);
     }
 
-    // Test connectivite BCAT (HTTP au serveur :8095)
+    // BCAT connectivity test (HTTP to the server on :8095)
     if (nextendo_current_mode() == 0) {
         size_t blen = 0;
         int httpStatus = 0;
@@ -776,7 +776,7 @@ void nextendo_diag_network(void) {
         if (body) free(body);
     }
 
-    // Presence des fichiers hosts : absents, c'est simplement que le mode Nintendo est actif.
+    // Presence of the hosts files: if absent, that simply means Nintendo mode is active.
     struct stat st;
     bool hasSys = stat(NEXTENDO_HOSTS_SYSMMC, &st) == 0;
     bool hasEmu = stat(NEXTENDO_HOSTS_EMUMMC, &st) == 0;
@@ -787,12 +787,12 @@ void nextendo_diag_network(void) {
 Result nextendo_reboot(void) {
     Result rc = bpcInitialize();
     if (R_FAILED(rc)) return rc;
-    rc = bpcRebootSystem();              // ne revient pas si succes
+    rc = bpcRebootSystem();              // does not return on success
     bpcExit();
     return rc;
 }
 
-// Mod SSBU Online Deluxe : vit dans romfs:/ssbu_quickplay/ et se copie dans sdmc:. Installation optionnelle.
+// SSBU Online Deluxe mod: lives in romfs:/ssbu_quickplay/ and copies to sdmc:. Installing it is optional.
 
 #define SSBU_MOD_SENTINEL \
     "sdmc:/atmosphere/contents/01006A800016E000/romfs/skyline/plugins/libssbu_online_deluxe.nro"
@@ -813,9 +813,9 @@ void nextendo_ssbu_remove(void) {
     fsdevCommitDevice("sdmc");
 }
 
-// Overclock embarque du mod SSBU (plugin libnx_over.nro + sysmodule 00FF0000A11CE0FF, charges par boot2.flag).
-// Avec Horizon OC / sys-clk deja en place, les deux pilotent les memes rails PCV et la console GELE au lancement de Smash.
-// Desactiver = config.toml overclocker=false, puis suppression du plugin et du sysmodule (procedure confirmee par saad-script, auteur du mod).
+// The SSBU mod's bundled overclock (libnx_over.nro plugin + sysmodule 00FF0000A11CE0FF, loaded by boot2.flag).
+// With Horizon OC / sys-clk already in place, both drive the same PCV rails and the console FREEZES on launching Smash.
+// Disabling = config.toml overclocker=false, then deleting the plugin and the sysmodule (procedure confirmed by saad-script, the mod's author).
 
 #define SSBU_OC_CONFIG_DIR  "sdmc:/ultimate/ssbu_online_deluxe"
 #define SSBU_OC_CONFIG      SSBU_OC_CONFIG_DIR "/config.toml"
@@ -824,7 +824,7 @@ void nextendo_ssbu_remove(void) {
 #define SSBU_OC_SYSMOD_ROMFS "romfs:/ssbu_quickplay/atmosphere/contents/00FF0000A11CE0FF"
 #define SSBU_OC_PLUGIN_ROMFS "romfs:/ssbu_quickplay/atmosphere/contents/01006A800016E000/romfs/skyline/plugins/libnx_over.nro"
 
-// boot2.flag est le marqueur fiable, pas config.toml : le joueur peut avoir edite ce dernier a la main.
+// boot2.flag is the reliable marker, not config.toml: the player may have hand-edited the latter.
 bool nextendo_ssbu_oc_is_disabled(void) {
     return !fileExists(SSBU_OC_SYSMOD "/flags/boot2.flag");
 }
@@ -834,7 +834,7 @@ bool nextendo_ssbu_oc_set(bool enabled) {
     if (enabled) {
         if (R_FAILED(ensureDir(SSBU_OC_SYSMOD))) return false;
         ok = copyTreeRomfs(SSBU_OC_SYSMOD_ROMFS, SSBU_OC_SYSMOD);
-        // Recopie seulement si le mod est installe : sinon on recreerait un orphelin dans une arbo retiree.
+        // Only copied back if the mod is installed: otherwise we would recreate an orphan in a tree the user removed.
         if (ok && nextendo_ssbu_is_installed())
             ok = copyFile(SSBU_OC_PLUGIN_ROMFS, SSBU_OC_PLUGIN);
         if (ok) {
@@ -842,7 +842,7 @@ bool nextendo_ssbu_oc_set(bool enabled) {
             writeTextFile(SSBU_OC_CONFIG, "overclocker = true\n");
         }
     } else {
-        // Le reglage d'abord : le mod part ainsi sans overclock meme si une suppression echoue a mi-chemin.
+        // The setting first: that way the mod starts without overclock even if a deletion fails halfway.
         ok = (R_SUCCEEDED(ensureDir(SSBU_OC_CONFIG_DIR)) &&
               writeTextFile(SSBU_OC_CONFIG, "overclocker = false\n"));
         remove(SSBU_OC_PLUGIN);

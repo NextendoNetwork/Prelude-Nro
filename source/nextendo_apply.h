@@ -13,63 +13,63 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Logique systeme : ecrire les hosts, editer system_settings.ini, redemarrer.
+// System logic: write the hosts files, edit system_settings.ini, reboot.
 #ifndef NEXTENDO_APPLY_H
 #define NEXTENDO_APPLY_H
 #include <switch.h>
 
 typedef enum { BOOT_UNKNOWN = -1, BOOT_SYSMMC = 0, BOOT_EMUMMC = 1 } BootType;
 
-// Commit a chaque ligne : sans lui un arret force perd le cache SD et la trace ne dit plus rien.
+// Commit on every line: without it a forced power-off loses the SD cache and the trace says nothing.
 void nextendo_trace(const char *step);
 #define NEXTENDO_TRACE_PATH "sdmc:/prelude_trace.txt"
 
-// Cosmetique : les deux fichiers hosts sont ecrits de toute facon.
+// Cosmetic: both hosts files get written either way.
 BootType nextendo_detect_boot(void);
 
-// 0 = NEXTENDO, 1 = NINTENDO (memes valeurs que CHOICE_*), lu depuis les fichiers hosts.
+// 0 = NEXTENDO, 1 = NINTENDO (same values as CHOICE_*), read back from the hosts files.
 int nextendo_current_mode(void);
 
-// Ecrit sysmmc.txt + emummc.txt et pose enable_dns_mitm=1.
+// Writes sysmmc.txt + emummc.txt and sets enable_dns_mitm=1.
 bool nextendo_apply_nextendo_ip(const char *ip);
 
-// Idem avec NEXTENDO_SERVER_IP_DEFAULT.
+// Same, using NEXTENDO_SERVER_IP_DEFAULT.
 bool nextendo_apply_nextendo(void);
 
-// Retire nos hosts et repasse enable_dns_mitm=0.
+// Removes our hosts files and puts enable_dns_mitm back to 0.
 bool nextendo_apply_nintendo(void);
 
-// Loggue la connectivite dans la trace (diagnostic 2123-0011 / 2810-1224).
+// Logs connectivity into the trace (diagnostics for 2123-0011 / 2810-1224).
 void nextendo_diag_network(void);
 
-// Ne revient pas si succes (bpcRebootSystem).
+// Does not return on success (bpcRebootSystem).
 Result nextendo_reboot(void);
 
-// Mod SSBU Online Deluxe : copie romfs:/ssbu_quickplay/ vers sdmc:, et l'inverse.
+// SSBU Online Deluxe mod: copies romfs:/ssbu_quickplay/ to sdmc:, and the reverse.
 bool nextendo_ssbu_is_installed(void);
 bool nextendo_ssbu_install(void);
 void nextendo_ssbu_remove(void);
 
-// Overclock du mod : a couper si Horizon OC / sys-clk tourne deja, sinon la console gele au lancement de Smash.
+// The mod's own overclock: turn it off if Horizon OC / sys-clk is already running, or Smash freezes on launch.
 bool nextendo_ssbu_oc_is_disabled(void);
 bool nextendo_ssbu_oc_set(bool enabled);
 
-// Correctifs Splatoon 3 : indexes par build id, ignores EN SILENCE si aucun ne correspond (-> 2122-2403).
+// Splatoon 3 patches: indexed by build id, and SILENTLY ignored when none matches (-> 2122-2403).
 typedef struct {
-    int  onSd;        // correctifs presents sur la carte
-    int  inRomfs;     // correctifs livres par ce .nro
-    bool dnsMitmOn;   // enable_dns_mitm = 1 dans system_settings.ini
-    bool hostsOk;     // les hosts portent bien notre IP
+    int  onSd;        // patches present on the SD card
+    int  inRomfs;     // patches shipped by this .nro
+    bool dnsMitmOn;   // enable_dns_mitm = 1 in system_settings.ini
+    bool hostsOk;     // the hosts files really do carry our IP
 } NextendoS3Status;
 
 void nextendo_s3_status(NextendoS3Status *out);
 bool nextendo_provision_all_public(void);
 
-// Hosts dns.mitm d'AVANT Prelude. create/restore renvoient le nombre de fichiers traites (0 = rien a faire).
+// The user's dns.mitm hosts from BEFORE Prelude. create/restore return the file count handled (0 = nothing to do).
 bool nextendo_hosts_backup_exists(void);
 int  nextendo_hosts_backup_create(void);
 int  nextendo_hosts_backup_restore(void);
-// La question ne se pose qu'au premier lancement et apres chaque mise a jour.
+// The question is only asked on first launch and after each update.
 bool nextendo_backup_prompt_needed(void);
 void nextendo_backup_prompt_done(void);
 bool nextendo_backup_use_for_nintendo(void);

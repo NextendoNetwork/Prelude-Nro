@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Rendu UI : framebuffer libnx, texte FreeType (Poppins, OFL, depuis le romfs), images en RGBA brut.
+// UI rendering: libnx framebuffer, FreeType text (Poppins, OFL, from the romfs), raw RGBA images.
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,9 +27,9 @@
 #include "nextendo_apply.h"
 #include "nextendo_flag.h"
 #include "lang.h"
-#include "nextendo_update.h"   // NEXTENDO_VERSION_* pour le contexte de l en-tete
+#include "nextendo_update.h"   // NEXTENDO_VERSION_* for the header context line
 
-#define IMG 200                 // taille des .rgba (200x200)
+#define IMG 200                 // .rgba asset size (200x200)
 #define IMG_BYTES (IMG * IMG * 4)
 
 static Framebuffer s_fb;
@@ -40,7 +40,7 @@ static u8         *s_logo, *s_ninten;         // images RGBA 200x200
 
 static inline u32 packColor(Color c) { return RGBA8(c.r, c.g, c.b, c.a); }
 
-// Le theme clair n'est PAS l'inversion du sombre : le vert et l'ambre concus pour un fond noir sont assombris.
+// The light theme is NOT the dark one inverted: the green and amber designed for black are darkened.
 UiTheme g_theme = THEME_DARK;
 
 #define THEMED(fn, dark, light) \
@@ -73,7 +73,7 @@ static inline u32 blendPix(u32 dst, u8 sr, u8 sg, u8 sb, u8 a) {
                  (sb * a + db * (255 - a)) / 255, 255);
 }
 
-// ---- formes ----
+// ---- shapes ----
 static void fillRect(u32 *b, u32 st, int x, int y, int w, int h, u32 c) {
     for (int j = 0; j < h; j++)
         for (int i = 0; i < w; i++)
@@ -100,7 +100,7 @@ static void roundedCard(u32 *b, u32 st, int x, int y, int w, int h, int r, u32 c
                 }
 }
 
-// ---- blit image RGBA (mise à l'échelle nearest + alpha) ----
+// ---- RGBA image blit (nearest-neighbour scaling + alpha) ----
 static void blitImg(u32 *b, u32 st, int dx, int dy, int dw, int dh, u8 *img) {
     if (!img) return;
     for (int y = 0; y < dh; y++) {
@@ -116,7 +116,7 @@ static void blitImg(u32 *b, u32 st, int dx, int dy, int dw, int dh, u8 *img) {
     }
 }
 
-// ---- texte (FreeType, police choisie, blit alpha) ----
+// ---- text (FreeType, chosen face, alpha blit) ----
 static int measureF(FT_Face fc, int px, const char *s) {
     if (FT_Set_Pixel_Sizes(fc, 0, px)) return 0;
     int w = 0; u32 i = 0, len = strlen(s); uint32_t cp; ssize_t u;
@@ -156,10 +156,10 @@ static void drawCF(u32 *b, u32 st, FT_Face fc, int cx, int y, int px, u32 col, c
     drawF(b, st, fc, cx - measureF(fc, px, s) / 2, y, px, col, s);
 }
 
-// Primitives partagees (en-tete, barre de boutons, curseur, lignes) : tout part de HDR_H / FTR_H / ROW_H et de l'echelle SP_*.
-// A plat, sans degrade, comme les Parametres.
-// Zones tactiles de la frame courante. Enregistrees AU MOMENT du dessin : une zone ne peut donc
-// pas deriver de ce qui est affiche, et une ligne qui n'est pas dessinee n'est pas touchable.
+// Shared primitives (header, button bar, cursor, rows): everything derives from HDR_H / FTR_H / ROW_H and the SP_* scale.
+// Flat, no gradient, like Settings.
+// Touch zones for the current frame. Registered AS it is drawn, so a zone cannot drift from
+// what is on screen, and a row that is not drawn is not tappable.
 typedef struct { int x, y, w, h, tag; } HitRect;
 #define UI_MAX_HITS 32
 static HitRect s_hits[UI_MAX_HITS];
@@ -169,7 +169,7 @@ static void hitAdd(int x, int y, int w, int h, int tag) {
     if (s_hitN < UI_MAX_HITS) s_hits[s_hitN++] = (HitRect){ x, y, w, h, tag };
 }
 
-// Parcours a l'envers : la derniere zone dessinee est celle du dessus, donc celle qui gagne.
+// Scanned backwards: the last zone drawn is the topmost one, so it wins.
 int ui_tap_at(int x, int y) {
     for (int i = s_hitN - 1; i >= 0; i--) {
         const HitRect *r = &s_hits[i];
@@ -179,16 +179,16 @@ int ui_tap_at(int x, int y) {
 }
 
 static void chromeClear(u32 *b, u32 st) {
-    s_hitN = 0;   // nouvelle frame : les zones de la precedente ne valent plus rien
+    s_hitN = 0;   // new frame: the previous frame's zones are worthless now
     u32 sw = st / sizeof(u32), bg = packColor(theme_bg());
     for (int y = 0; y < FB_H; y++)
         for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
 }
 
-// Pastille de marque, titre, contexte a droite ; le filet du bas est la signature des ecrans systeme.
+// Brand mark, title, context on the right; the hairline underneath is the signature of system screens.
 static void chromeHeader(u32 *b, u32 st, const char *title, const char *right) {
-    int cy = HDR_H / 2 + FS_TITLE / 3;   // ligne de base optique du texte
-    // Le logo du romfs plutot qu'un carre de couleur : l'asset est deja embarque, donc gratuit en taille.
+    int cy = HDR_H / 2 + FS_TITLE / 3;   // optical baseline of the text
+    // The romfs logo rather than a coloured square: the asset already ships, so it costs no size.
     if (s_logo) blitImg(b, st, SP_LG, HDR_H / 2 - 20, 40, 40, s_logo);
     else roundedCard(b, st, SP_LG, HDR_H / 2 - 16, 32, 32, 9, packColor(C_BLUE));
     drawF(b, st, s_semi, SP_LG + 40 + SP_SM, cy, FS_TITLE, packColor(theme_text()), title);
@@ -199,7 +199,7 @@ static void chromeHeader(u32 *b, u32 st, const char *title, const char *right) {
     fillRect(b, st, 0, HDR_H - 2, FB_W, 2, packColor(theme_sep()));
 }
 
-// Cercles dessines avec roundedCard de rayon = moitie du cote : pas de primitive cercle, et a 30 px ca ne se voit pas.
+// Circles drawn with roundedCard at radius = half the side: there is no circle primitive, and at 30 px nobody can tell.
 typedef struct { const char *btn; const char *label; } Hint;
 
 static void chromeFooter(u32 *b, u32 st, const Hint *hints, int n, const char *right) {
@@ -216,15 +216,15 @@ static void chromeFooter(u32 *b, u32 st, const Hint *hints, int n, const char *r
         x += d + SP_XS;
         drawF(b, st, s_reg, x, cy + FS_CAP / 3, FS_CAP, packColor(theme_text2()), hints[i].label);
         x += measureF(s_reg, FS_CAP, hints[i].label) + SP_LG;
-        // Le tag porte la TOUCHE affichee, pas le rang : la barre change de contenu selon l'ecran,
-        // et un tag positionnel ferait declencher autre chose que ce qui est ecrit.
+        // The tag carries the BUTTON shown, not the index: the bar's contents change per screen,
+        // and a positional tag would eventually fire something other than what is written.
         int btn = -1;
         if      (hints[i].btn[0] == 'A') btn = UI_BTN_A;
         else if (hints[i].btn[0] == 'B') btn = UI_BTN_B;
         else if (hints[i].btn[0] == 'Y') btn = UI_BTN_Y;
         else if (hints[i].btn[0] == '+') btn = UI_BTN_PLUS;
-        // Toute la hauteur de la barre est prise : viser un cercle de 30 px au doigt est illusoire.
-        // On retire l'ecart qui suit le libelle : sans ca la zone de A mordrait jusque sous B.
+        // The zone spans the bar's full height: aiming a finger at a 30 px circle is wishful thinking.
+        // The gap after the label is excluded: without that, A's zone would reach under B.
         if (btn >= 0) hitAdd(x0 - SP_XS, y, (x - SP_LG - x0) + SP_XS * 2, FTR_H, UI_TAP_BTN + btn);
     }
     if (right && right[0]) {
@@ -234,13 +234,13 @@ static void chromeFooter(u32 *b, u32 st, const Hint *hints, int n, const char *r
     }
 }
 
-// Anneau cyan AUTOUR de la surface : la remplir ferait perdre l'etat actif/inactif que sa couleur de fond porte.
+// A cyan ring AROUND the surface: filling it would lose the active/inactive state its background colour carries.
 static void chromeCursor(u32 *b, u32 st, int x, int y, int w, int h) {
     u32 c = packColor(C_CYAN);
     roundedCard(b, st, x - 4, y - 4, w + 8, h + 8, RADIUS + 4, c);
 }
 
-// Renvoie le y de la ligne suivante, pour que l'appelant empile sans calculer d'offsets.
+// Returns the y of the next row, so the caller can stack without computing offsets.
 static int chromeRow(u32 *b, u32 st, int x, int y, int w,
                      bool focused, const char *label, const char *sub) {
     if (focused) chromeCursor(b, st, x, y, w, ROW_H);
@@ -255,7 +255,7 @@ static int chromeRow(u32 *b, u32 st, int x, int y, int w,
     return y + ROW_H + SP_XS;
 }
 
-// Pastille d'etat, alignee a droite d'une ligne.
+// Status pill, right-aligned within a row.
 static void chromeBadge(u32 *b, u32 st, int rowX, int rowY, int rowW,
                         const char *text, Color bg, Color fg) {
     int tw = measureF(s_semi, FS_CAP, text);
@@ -265,7 +265,7 @@ static void chromeBadge(u32 *b, u32 st, int rowX, int rowY, int rowW,
     drawF(b, st, s_semi, px + SP_MD, py + ph / 2 + FS_CAP / 3, FS_CAP, packColor(fg), text);
 }
 
-// Piste + pastille : un booleen se lit d'un coup d'oeil, sans avoir a decoder le libelle.
+// Track + knob: a boolean reads at a glance, with no need to decode the label.
 static void chromeToggle(u32 *b, u32 st, int rowX, int rowY, int rowW, bool on) {
     int tw = 68, th = 36;
     int tx = rowX + rowW - SP_MD - tw, ty = rowY + (ROW_H - th) / 2;
@@ -275,13 +275,13 @@ static void chromeToggle(u32 *b, u32 st, int rowX, int rowY, int rowW, bool on) 
                 packColor(COL(0xFF, 0xFF, 0xFF)));
 }
 
-// Intitule de section (majuscules, discret) au-dessus d'un groupe de lignes.
+// Section heading (uppercase, understated) above a group of rows.
 static int chromeSection(u32 *b, u32 st, int x, int y, const char *text) {
     drawF(b, st, s_semi, x, y + FS_LABEL, FS_LABEL, packColor(theme_text2()), text);
     return y + FS_LABEL + SP_SM;
 }
 
-// ---- chargement police + image depuis le romfs ----
+// ---- font and image loading from the romfs ----
 static bool loadFace(const char *path, FT_Face *face, u8 **buf) {
     FILE *f = fopen(path, "rb");
     if (!f) return false;
@@ -327,15 +327,15 @@ void ui_exit(void) {
     if (s_rBuf) free(s_rBuf);
 }
 
-// Le toast ne peut pas etre une frame a lui : en double buffer il s'afficherait sur le buffer
-// precedent, une frame sur deux, ce qui clignote. Il est donc pose dans la frame du picker.
+// The toast cannot own a frame: with double buffering it would land on the previous buffer,
+// every other frame, which blinks. So it is drawn inside the picker's frame instead.
 static char s_toastText[96];
 static int  s_toastFrames;
 
 void ui_set_toast(const char *text) {
     if (!text) { s_toastFrames = 0; return; }
     snprintf(s_toastText, sizeof(s_toastText), "%s", text);
-    s_toastFrames = 120;   // ~2 secondes a 60fps
+    s_toastFrames = 120;   // ~2 seconds at 60fps
 }
 
 static void drawToast(u32 *b, u32 st) {
@@ -348,7 +348,7 @@ static void drawToast(u32 *b, u32 st) {
     s_toastFrames--;
 }
 
-// ------- Ecran principal : rail de navigation + panneau -------
+// ------- Main screen: navigation rail + panel -------
 static const char *railLabel(int i) {
     switch (i) {
         case RAIL_MODE: return lang_str(STR_RAIL_MODE);
@@ -360,15 +360,15 @@ static const char *railLabel(int i) {
     }
 }
 
-// main.c borne le focus avec ca : la navigation ne doit pas deviner ce que le rendu affiche.
+// main.c clamps the focus with this: navigation must not guess what the renderer shows.
 int ui_pane_rows(int railSel, bool ssbuInstalled) {
     switch (railSel) {
         case RAIL_MODE: return 2;                        // Nextendo / Nintendo
-        case RAIL_SSBU: return ssbuInstalled ? 2 : 1;    // mod (+ overclock si installe)
-        // Toujours 1, meme quand le bouton n'est pas dessine : la navigation fait paneSel % rows, et zero serait une division par zero.
+        case RAIL_SSBU: return ssbuInstalled ? 2 : 1;    // mod (+ overclock when installed)
+        // Always 1, even when the button is not drawn: navigation does paneSel % rows, and zero would divide by zero.
         case RAIL_S3:   return 1;
         case RAIL_LANG: return 4;                        // EN / ES / PT / FR
-        default:        return 1;                        // S2, drapeau : une action
+        default:        return 1;                        // S2, flag: a single action
     }
 }
 
@@ -381,7 +381,7 @@ static void drawRail(u32 *b, u32 st, int railSel, bool railFocused) {
         bool on = (railSel == i);
         if (on) {
             fillRect(b, st, 0, y, RAIL_W - 2, 56, packColor(theme_sel()));
-            // Liseré plein quand le rail a le focus, attenue sinon : on voit OU vont les fleches.
+            // Solid edge when the rail has focus, dimmed otherwise: you can see WHERE the d-pad goes.
             fillRect(b, st, 0, y, railFocused ? 6 : 3, 56,
                      packColor(railFocused ? C_CYAN : theme_sep()));
         }
@@ -419,7 +419,7 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
     }
 
     y = chromeSection(b, st, x, y, railLabel(railSel));
-    // Un seul curseur a la fois : en montrer deux mentirait sur l'effet des fleches.
+    // One cursor at a time: showing two would lie about what the d-pad does.
     #define FOC(i) (paneFocused && paneSel == (i))
 
     if (railSel == RAIL_MODE) {
@@ -453,7 +453,7 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
             chromeToggle(b, st, x, rowY, w, !ssbuOcDisabled);
         }
     } else if (railSel == RAIL_S3) {
-        // Du TEXTE, pas des lignes cliquables : seul le bouton du bas est actionnable, et seul lui porte ce style.
+        // TEXT, not tappable rows: only the button at the bottom acts, and only it wears that style.
         u32 cInfo = packColor(theme_text2());
         u32 cWarn = packColor(theme_warn());
         char ligne[192];
@@ -483,7 +483,7 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
         drawF(b, st, s_reg, x, y + FS_CAP, FS_CAP, cInfo, lang_str(STR_S3_VERSION));
         y += FS_CAP + SP_LG;
 
-        // Absente en mode Nintendo : ce mode retire volontairement la pile de certificats, la reposer serait une faille.
+        // Absent in Nintendo mode: that mode deliberately removes the cert stack, and putting it back would be a hole.
         if (current != CHOICE_NINTENDO) {
             int rowY = y;
             y = chromeRow(b, st, x, y, w, FOC(0),
@@ -518,10 +518,10 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
     if (status && status[0])
         drawF(b, st, s_semi, x, FB_H - FTR_H - SP_SM, FS_CAP, packColor(C_CYAN), status);
 
-    // La barre dit ce que font les touches ICI et maintenant, pas une liste fixe.
+    // The bar states what the buttons do HERE and now, not a fixed list.
     Hint h[4]; int n = 0;
     if (updMaj > 0) {
-        // Verrou de MAJ obligatoire : seuls Y et +/B repondent, et nommer une touche inerte se lit comme un plantage.
+        // Mandatory-update lock: only Y and +/B respond, and naming a dead button reads as a crash.
         h[n++] = (Hint){ "Y", lang_str(STR_HINT_UPDATE) };
         h[n++] = (Hint){ "+", lang_str(STR_HINT_EXIT) };
     } else if (paneFocused) {
@@ -536,7 +536,7 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
     framebufferEnd(&s_fb);
 }
 
-// Dialogue de confirmation : boite compacte, actions en bas. Les glyphes restent A/B parce que l'entree l'est aussi.
+// Confirmation dialog: compact box, actions at the bottom. The glyphs stay A/B because the input is.
 void ui_draw_confirm(int selection, bool warnNoEmummc) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
@@ -545,7 +545,7 @@ void ui_draw_confirm(int selection, bool warnNoEmummc) {
     chromeClear(b, st);
     chromeHeader(b, st, lang_str(STR_TITLE_PRELUDE), NULL);
 
-    // Le voile fait lire le dialogue comme pose PAR-DESSUS l'ecran : c'est ce qui distingue une modale d'une navigation.
+    // The scrim makes the dialog read as laid OVER the screen: that is what separates a modal from navigation.
     u32 sw = st / sizeof(u32);
     for (int y = 0; y < FB_H; y++)
         for (int x = 0; x < FB_W; x++) {
@@ -564,7 +564,7 @@ void ui_draw_confirm(int selection, bool warnNoEmummc) {
     drawCF(b, st, s_reg, FB_W / 2, y, FS_BODY, packColor(theme_text2()),
            lang_str(STR_CONFIRM_REBOOT));
     y += SP_MD + SP_XS;
-    // warnNoEmummc == false => la console A un emuMMC (PRODINFO blanchi -> online HS).
+    // warnNoEmummc == false => the console HAS an emuMMC (blanked PRODINFO -> online dead).
     drawCF(b, st, s_reg, FB_W / 2, y, FS_CAP, packColor(theme_text2()),
            lang_str(nx ? STR_CONFIRM_RESTART_NEXTENDO
                        : (warnNoEmummc ? STR_CONFIRM_RESTART_NINTENDO
@@ -586,7 +586,7 @@ void ui_draw_confirm(int selection, bool warnNoEmummc) {
         }
     }
 
-    // Actions en bas, separees par un filet vertical.
+    // Actions at the bottom, split by a vertical hairline.
     int ay = dy + dh - 64;
     fillRect(b, st, dx, ay, dw, 2, packColor(theme_sep()));
     fillRect(b, st, dx + dw / 2, ay, 2, 64, packColor(theme_sep()));
@@ -600,7 +600,7 @@ void ui_draw_confirm(int selection, bool warnNoEmummc) {
     framebufferEnd(&s_fb);
 }
 
-// Question OUI/NON : meme traitement que ui_draw_confirm, voile + carte centree.
+// YES/NO question: same treatment as ui_draw_confirm, scrim + centred card.
 void ui_draw_question(const char *title, const char *l1, const char *l2) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
@@ -639,7 +639,7 @@ void ui_draw_question(const char *title, const char *l1, const char *l2) {
     framebufferEnd(&s_fb);
 }
 
-// ------- Ecran de progression -------
+// ------- Progress screen -------
 void ui_draw_progress(const char *line) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
@@ -651,7 +651,7 @@ void ui_draw_progress(const char *line) {
     framebufferEnd(&s_fb);
 }
 
-// Largeur minimale imposee des que le remplissage est non nul : a 1 % il ne dessinerait rien et l'ecran aurait l'air fige.
+// A minimum width is forced as soon as the fill is non-zero: at 1 % it would draw nothing and the screen would look frozen.
 void ui_draw_progress_bar(const char *line, int pct, const char *detail) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
@@ -677,7 +677,7 @@ void ui_draw_progress_bar(const char *line, int pct, const char *detail) {
     framebufferEnd(&s_fb);
 }
 
-// Statut porte par la pastille ET par le texte : la couleur seule exclut ceux qui la distinguent mal.
+// Status carried by the pill AND the text: colour alone excludes anyone who cannot tell them apart.
 void ui_draw_result(const char *title, const char *msg, bool ok) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
@@ -697,7 +697,7 @@ void ui_draw_result(const char *title, const char *msg, bool ok) {
     framebufferEnd(&s_fb);
 }
 
-// ------- Ecran d'explication "Planning en ligne Splatoon 2" -------
+// ------- Explanation screen for "Splatoon 2 online schedule" -------
 void ui_draw_s2_info(void) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
@@ -716,7 +716,7 @@ void ui_draw_s2_info(void) {
     framebufferEnd(&s_fb);
 }
 
-// ------- Confirmation avant mise a jour -------
+// ------- Pre-update confirmation -------
 void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
@@ -756,7 +756,7 @@ void ui_draw_loading(const char *text) {
     framebufferEnd(&s_fb);
 }
 
-// Liste de pays MK8D. FLAG_ROWS reste le nombre de lignes visibles : main.c s'en sert pour le defilement.
+// MK8D country list. FLAG_ROWS stays the visible row count: main.c uses it for scrolling.
 void ui_draw_flag_menu(int sel, int scroll, const char *currentCode) {
     u32 st;
     u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
@@ -772,7 +772,7 @@ void ui_draw_flag_menu(int sel, int scroll, const char *currentCode) {
     }
     chromeHeader(b, st, lang_str(STR_FLAG_MENU_TITLE), ctx);
 
-    // Plus compact que ROW_H : c'est une liste a parcourir, pas un ecran de reglages.
+    // Tighter than ROW_H: this is a list to scan through, not a settings screen.
     const int rh = 58;
     int x = SP_XL, w = FB_W - SP_XL * 2, y = BODY_Y + SP_SM;
 
@@ -780,7 +780,7 @@ void ui_draw_flag_menu(int sel, int scroll, const char *currentCode) {
         int idx = scroll + r;
         if (idx >= FLAG_COUNT) break;
         int ry = y + r * rh;
-        if (ry + rh > FB_H - FTR_H) break;          // ne jamais deborder sur la barre
+        if (ry + rh > FB_H - FTR_H) break;          // never spill over the button bar
         bool hov = (idx == sel);
         bool ins = (currentCode && currentCode[0]
                     && strncmp(g_flags[idx].code, currentCode, 2) == 0);

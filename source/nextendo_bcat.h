@@ -13,24 +13,24 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Planning Splatoon 2 : GET /api/bcat/<titleId> -> zip extrait dans le LayeredFS d'Atmosphere (USA + EUR).
+// Splatoon 2 schedule: GET /api/bcat/<titleId> -> zip extracted into Atmosphere's LayeredFS (USA + EUR).
 #ifndef NEXTENDO_BCAT_H
 #define NEXTENDO_BCAT_H
 #include <switch.h>
 
 typedef enum {
-    NB_OK = 0,           // installe
-    NB_NET_FAIL,         // telechargement impossible (raison dans le log)
-    NB_NET_CONNECT,      // serveur injoignable (timeout / connexion refusee)
-    NB_NET_TIMEOUT,      // reponse interrompue
-    NB_NET_HTTP_ERR,     // le serveur a repondu un code HTTP different de 200/204
-    NB_NO_SCHEDULE,      // 204 : rien de publie
-    NB_MOUNT_FAIL,       // (obsolete) conserve pour compatibilite main.c
-    NB_BAD_BUNDLE,       // bundle illisible
-    NB_WRITE_FAIL        // ecriture fichier sur la SD echouee
+    NB_OK = 0,           // installed
+    NB_NET_FAIL,         // download failed (reason is in the log)
+    NB_NET_CONNECT,      // server unreachable (timeout / connection refused)
+    NB_NET_TIMEOUT,      // response cut short
+    NB_NET_HTTP_ERR,     // server answered an HTTP code other than 200/204
+    NB_NO_SCHEDULE,      // 204: nothing published
+    NB_MOUNT_FAIL,       // (obsolete) kept for main.c compatibility
+    NB_BAD_BUNDLE,       // unreadable bundle
+    NB_WRITE_FAIL        // writing the file to the SD card failed
 } nextendo_bcat_result;
 
-// socketInitializeDefault() + sslInitialize() doivent etre actifs avant l'appel.
+// socketInitializeDefault() + sslInitialize() must be active before calling.
 nextendo_bcat_result nextendo_bcat_install_s2(void);
 
 extern Result g_last_rc;

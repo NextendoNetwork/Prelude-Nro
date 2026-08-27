@@ -9,7 +9,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Tables de traductions EN / ES / PT.
+// EN / ES / PT translation tables.
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -21,7 +21,7 @@ Lang g_lang = LANG_EN;
 
 #define LANG_PATH "sdmc:/switch/prelude_lang.txt"
 
-// Colonnes EN, ES, PT, FR, dans l'ordre EXACT de StringID. Les noms de marque ne se traduisent pas.
+// Columns EN, ES, PT, FR, in the EXACT order of StringID. Brand names are never translated.
 static const char *s_strings[STR_COUNT][4] = {
     // --- Picker screen ---
     [STR_TITLE_PRELUDE]      = { "Prelude", "Prelude", "Prelude", "Prelude" },
@@ -34,7 +34,7 @@ static const char *s_strings[STR_COUNT][4] = {
                                  "Servidores Nextendo: online custom, iconos, amigos. Cuenta Nextendo requerida.",
                                  "Servidores Nextendo: online custom, iconos, amigos. Conta Nextendo necessaria.",
                                    "Serveurs Nextendo : online custom, icônes, amis. Compte Nextendo requis." },
-    // Ne promet PAS "fonctionnement normal" : en emuMMC le PRODINFO blanchi coupe les services en ligne.
+    // Does NOT promise "normal operation": on emuMMC the blanked PRODINFO kills online services.
     [STR_DESC_NINTENDO]      = { "Official Nintendo DNS restored. Telemetry stays blocked.",
                                  "DNS oficial de Nintendo restaurado. La telemetria sigue bloqueada.",
                                  "DNS oficial da Nintendo restaurado. A telemetria continua bloqueada.",
@@ -55,7 +55,7 @@ static const char *s_strings[STR_COUNT][4] = {
                                    "A : installer le planning       < > : changer de choix       B : quitter" },
 
     // --- Update banner ---
-    // Les trois %d sont obligatoires : l'appelant passe maj, min ET patch.
+    // All three %d are required: the caller passes maj, min AND patch.
     [STR_UPDATE_BANNER]      = { "MANDATORY update (v%d.%d.%d)   -   press Y to install",
                                  "Actualizacion OBLIGATORIA (v%d.%d.%d)   -   presiona Y para instalar",
                                  "Atualizacao OBRIGATORIA (v%d.%d.%d)   -   pressione Y para instalar",
@@ -78,12 +78,12 @@ static const char *s_strings[STR_COUNT][4] = {
                                        "Al reiniciar: conectado a los servidores Nextendo Network.",
                                        "Ao reiniciar: conectado aos servidores Nextendo Network.",
                                    "Au redémarrage : connecté aux serveurs Nextendo Network." },
-    // Sans emuMMC le PRODINFO reste le vrai : retour REEL aux serveurs officiels, d'ou l'avertissement STR_WARN_* dessous.
+    // Without emuMMC the PRODINFO stays real: a GENUINE return to official servers, hence the STR_WARN_* notice below.
     [STR_CONFIRM_RESTART_NINTENDO] = { "After reboot: back to official Nintendo servers.",
                                        "Al reiniciar: vuelta a los servidores oficiales Nintendo.",
                                        "Ao reiniciar: volta aos servidores oficiais Nintendo.",
                                    "Au redémarrage : retour aux serveurs officiels Nintendo." },
-    // Avec emuMMC l'identite est blanchie : ni eShop ni jeu en ligne. A tenir sous ~65 caracteres (une ligne de 820 px).
+    // With emuMMC the identity is blanked: no eShop, no online play. Keep under ~65 chars (one 820 px line).
     [STR_CONFIRM_RESTART_NINTENDO_EMU] = { "After reboot: official DNS. Online services will not work.",
                                            "Al reiniciar: DNS oficial. Los servicios en linea no iran.",
                                            "Ao reiniciar: DNS oficial. Os servicos online nao irao.",
@@ -412,7 +412,7 @@ static const char *s_strings[STR_COUNT][4] = {
                                           "Nao e possivel gravar no cartao SD.",
                                           "Impossible d'ecrire sur la carte SD." },
 
-    // --- Rail + barre de boutons : volontairement courts, ca se lit d'un coup d'oeil. ---
+    // --- Rail + button bar: deliberately short, they must read at a glance. ---
     [STR_RAIL_MODE]   = { "Mode",       "Modo",       "Modo",       "Mode" },
     [STR_RAIL_S2]     = { "Splatoon 2", "Splatoon 2", "Splatoon 2", "Splatoon 2" },
     [STR_RAIL_FLAG]   = { "Country",    "Pais",       "Pais",       "Pays" },

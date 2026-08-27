@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Thème UI : palette du système (menu HOME / Paramètres) + deux couleurs de marque.
+// UI theme: the system palette (HOME menu / Settings) plus two brand colours.
 #ifndef UI_THEME_H
 #define UI_THEME_H
 #include <switch.h>
@@ -21,30 +21,30 @@
 typedef struct { u8 r, g, b, a; } Color;
 #define COL(R, G, B) ((Color){ (R), (G), (B), 255 })
 
-// Les couleurs sont des accesseurs theme_*, pas des constantes : elles suivent le theme clair/sombre de la console.
-// Les deux couleurs de MARQUE ne bougent pas : elles tiennent sur fond clair comme sombre.
-#define C_RED      COL(0xE4, 0x00, 0x14)  // rouge marque (mode Nintendo)
-#define C_BLUE     COL(0x1C, 0xA9, 0xE0)  // bleu marque (mode Nextendo)
-#define C_S2       COL(0xF0, 0x2D, 0x7D)  // rose Splatoon
-#define C_CYAN     COL(0x00, 0xC3, 0xE3)  // cyan systeme : curseur de selection, actifs
+// Colours are theme_* accessors, not constants: they follow the console's light/dark setting.
+// The two BRAND colours never move: they hold up on light and dark backgrounds alike.
+#define C_RED      COL(0xE4, 0x00, 0x14)  // brand red (Nintendo mode)
+#define C_BLUE     COL(0x1C, 0xA9, 0xE0)  // brand blue (Nextendo mode)
+#define C_S2       COL(0xF0, 0x2D, 0x7D)  // Splatoon pink
+#define C_CYAN     COL(0x00, 0xC3, 0xE3)  // system cyan: selection cursor, active items
 
 typedef enum { THEME_DARK = 0, THEME_LIGHT = 1 } UiTheme;
 extern UiTheme g_theme;
 
-Color theme_bg(void);        // fond de l'ecran
-Color theme_pane(void);      // surface d'une ligne / carte posee sur le fond
-Color theme_rail(void);      // colonne de navigation (legerement detachee du fond)
-Color theme_sep(void);       // filets : sous l'en-tete, au-dessus de la barre de boutons
-Color theme_sel(void);       // fond de l'entree active du rail
+Color theme_bg(void);        // screen background
+Color theme_pane(void);      // surface of a row / card sitting on the background
+Color theme_rail(void);      // navigation column (slightly lifted off the background)
+Color theme_sep(void);       // hairlines: under the header, above the button bar
+Color theme_sel(void);       // background of the active rail entry
 
-Color theme_text(void);      // texte principal
-Color theme_text2(void);     // texte secondaire / libelles de boutons
+Color theme_text(void);      // primary text
+Color theme_text2(void);     // secondary text / button labels
 
-// Re-teintes en clair : les valeurs concues pour un fond sombre tombent sous le seuil de contraste.
-Color theme_ok(void);        // succes / "installe"
-Color theme_warn(void);      // avertissement (console sans emuMMC)
+// Re-tinted in light mode: values designed for a dark background fall under the contrast threshold.
+Color theme_ok(void);        // success / "installed"
+Color theme_warn(void);      // warning (console without emuMMC)
 
-// Anciens noms, a retirer quand ui.c n'en utilise plus.
+// Legacy names, to drop once ui.c no longer uses any of them.
 #define C_BG       theme_bg()
 #define C_TITLE    theme_text()
 #define C_SUBTLE   theme_text2()
@@ -56,36 +56,36 @@ Color theme_warn(void);      // avertissement (console sans emuMMC)
 #define FB_W 1280
 #define FB_H 720
 
-// Echelle d'espacement (multiples de 8) : toute marge sort d'ici, plus aucun offset en dur.
+// Spacing scale (multiples of 8): every margin comes from here, no hardcoded offsets left.
 #define SP_XS   8
 #define SP_SM   16
 #define SP_MD   24
 #define SP_LG   40
 #define SP_XL   64
 
-#define HDR_H   96                 // en-tete : titre + contexte console
-#define FTR_H   76                 // barre de boutons
-#define RAIL_W  320                // colonne de navigation
-#define BODY_Y  HDR_H              // haut de la zone centrale
+#define HDR_H   96                 // header: title + console context
+#define FTR_H   76                 // button bar
+#define RAIL_W  320                // navigation column
+#define BODY_Y  HDR_H              // top of the central area
 #define BODY_H  (FB_H - HDR_H - FTR_H)
 #define PANE_X  RAIL_W
 #define PANE_W  (FB_W - RAIL_W)
 
-// Echelle typographique.
-#define FS_TITLE 34                // titre de l'en-tete
-#define FS_BIG   30                // titre de dialogue
-#define FS_ITEM  25                // libelle d'une ligne / entree du rail
-#define FS_BODY  21                // texte courant
-#define FS_CAP   18                // secondaire, badges, boutons
-#define FS_LABEL 16                // intitule de section (majuscules)
+// Type scale.
+#define FS_TITLE 34                // header title
+#define FS_BIG   30                // dialog title
+#define FS_ITEM  25                // row label / rail entry
+#define FS_BODY  21                // body text
+#define FS_CAP   18                // secondary, badges, buttons
+#define FS_LABEL 16                // section heading (uppercase)
 
-#define ROW_H    84                // hauteur d'une ligne d'option
-#define RADIUS   12                // rayon standard des surfaces
+#define ROW_H    84                // height of an option row
+#define RADIUS   12                // standard corner radius
 
 #define CHOICE_NEXTENDO 0
 #define CHOICE_NINTENDO 1
 
-// Navigation a deux colonnes : rail (sections) a gauche, panneau (lignes) a droite.
+// Two-column navigation: rail (sections) on the left, panel (rows) on the right.
 #define RAIL_MODE 0
 #define RAIL_SSBU 1
 #define RAIL_S2   2
@@ -97,12 +97,12 @@ Color theme_warn(void);      // avertissement (console sans emuMMC)
 #define COL_RAIL 0
 #define COL_PANE 1
 
-// Anciens noms, encore utilises par le journal de sortie et quelques traces.
+// Legacy names, still used by the exit log and a few traces.
 #define FOCUS_MODE RAIL_MODE
 #define FOCUS_S2   RAIL_S2
 #define FOCUS_FLAG RAIL_FLAG
 
-// Orange MK8D (accent de la section drapeau).
+// MK8D orange (accent for the flag section).
 #define C_FLAG     COL(0xFF, 0x6B, 0x00)
 
 #endif // UI_THEME_H

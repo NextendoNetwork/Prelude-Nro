@@ -13,40 +13,40 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Auto-mise a jour : /api/nro/latest au lancement, puis remplacement du .nro en cours d'execution.
+// Self-update: /api/nro/latest at launch, then replacement of the currently running .nro.
 #ifndef NEXTENDO_UPDATE_H
 #define NEXTENDO_UPDATE_H
 #include <switch.h>
 
-// Version de CE build. A INCREMENTER a chaque release (le serveur renvoie la derniere).
+// Version of THIS build. BUMP on every release (the server reports the latest).
 #define NEXTENDO_BUILD 61
 
-// Vient d'APP_VERSION (Makefile) via -D. Ces valeurs ne servent qu'a une compilation hors make.
+// Comes from APP_VERSION (Makefile) via -D. These values only apply to a build outside make.
 #ifndef NEXTENDO_VERSION_MAJOR
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 3
-#define NEXTENDO_VERSION_PATCH 8
+#define NEXTENDO_VERSION_PATCH 9
 #endif
 
 typedef struct {
-    bool available;   // une version semver > NEXTENDO_VERSION_* est dispo
-    int  maj, min, patch;  // version serveur (du tag semver)
-    long size;        // taille attendue du .nro (verif du telechargement)
+    bool available;   // a semver newer than NEXTENDO_VERSION_* is available
+    int  maj, min, patch;  // server version (from the semver tag)
+    long size;        // expected .nro size (download integrity check)
 } NextendoUpdate;
 
 typedef enum {
     NUP_OK = 0,
-    NUP_NET_FAIL,     // telechargement impossible
-    NUP_SIZE_FAIL,    // taille recue != taille annoncee (download corrompu)
-    NUP_WRITE_FAIL    // ecriture SD impossible
+    NUP_NET_FAIL,     // download failed
+    NUP_SIZE_FAIL,    // received size != announced size (corrupt download)
+    NUP_WRITE_FAIL    // could not write to the SD card
 } nextendo_update_result;
 
-// argv[0] de hbmenu : le fichier qui sera remplace. Sans cet appel, repli sur sdmc:/switch/nextendo.nro.
+// hbmenu's argv[0]: the file that will be replaced. Without this call, falls back to sdmc:/switch/nextendo.nro.
 void nextendo_update_set_self_path(const char *argv0);
 
 NextendoUpdate nextendo_update_check(void);
 
-// Les deux temps longs : le telechargement (17 Mo) puis la pose sur la carte. `total` vaut 0 si inconnu.
+// The two slow phases: the download (17 MB) then writing it to the card. `total` is 0 when unknown.
 typedef enum {
     NUP_PHASE_DOWNLOAD = 0,
     NUP_PHASE_INSTALL  = 1,
@@ -54,7 +54,7 @@ typedef enum {
 
 typedef void (*nextendo_progress_fn)(nextendo_update_phase phase, long done, long total);
 
-// Remplace le .nro en cours via un .new + rename. `onProgress` peut etre NULL.
+// Replaces the running .nro via a .new + rename. `onProgress` may be NULL.
 nextendo_update_result nextendo_update_apply(long expectedSize, nextendo_progress_fn onProgress);
 
 #endif // NEXTENDO_UPDATE_H

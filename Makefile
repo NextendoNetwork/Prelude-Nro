@@ -1,4 +1,4 @@
-# Nextendo .nro — libnx + FreeType + mpg123 (BGM) + romfs. Base : switchbrew/switch-examples.
+# Nextendo .nro — libnx + FreeType + mpg123 (BGM) + romfs. Based on switchbrew/switch-examples.
 .SUFFIXES:
 
 ifeq ($(strip $(DEVKITPRO)),)
@@ -17,9 +17,9 @@ ROMFS    := romfs
 
 APP_TITLE   := Prelude
 APP_AUTHOR  := Nextendo Network
-# X.Y.N ou N = NEXTENDO_BUILD (source/nextendo_update.h) : NACP, build interne et tag GitHub restent alignes.
-APP_VERSION := 3.3.8
-# Doit etre un JPEG 256x256 : hbmenu ne decode pas le PNG et affiche une tuile vide.
+# X.Y.N where N = NEXTENDO_BUILD (source/nextendo_update.h): NACP, internal build and GitHub tag stay aligned.
+APP_VERSION := 3.3.9
+# Must be a 256x256 JPEG: hbmenu cannot decode PNG and shows an empty tile instead.
 APP_ICON    := icon.jpg
 
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
@@ -28,8 +28,8 @@ CFLAGS := -g -Wall -Wextra -O2 -ffunction-sections -fstack-protector-strong -D_F
 CFLAGS += $(INCLUDE) -D__SWITCH__
 CFLAGS += -I$(PORTLIBS)/include/freetype2 -Wno-format-truncation
 
-# Source unique de la version : le C la recoit d'ici, donc l'updater compare exactement ce
-# que le NACP affiche. Attendu en X.Y.Z ; un suffixe (3.3.8-rc1) ne compilerait pas.
+# Single source of truth for the version: the C code gets it from here, so the updater compares
+# exactly what the NACP shows. Expects X.Y.Z; a suffix (3.3.8-rc1) would not compile.
 ver_parts := $(subst ., ,$(APP_VERSION))
 CFLAGS += -DNEXTENDO_VERSION_MAJOR=$(word 1,$(ver_parts)) -DNEXTENDO_VERSION_MINOR=$(word 2,$(ver_parts)) -DNEXTENDO_VERSION_PATCH=$(word 3,$(ver_parts))
 
@@ -38,7 +38,7 @@ CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS := -g $(ARCH)
 LDFLAGS  = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-# Link via pkg-config (.pc des portlibs) : noms et ordre exacts des libs, dependents d'abord.
+# Link via pkg-config (portlibs .pc files): exact lib names and order, dependents first.
 PKGCONF := PKG_CONFIG_PATH=$(PORTLIBS)/lib/pkgconfig pkg-config
 LIBS := $(shell $(PKGCONF) --static --libs libmpg123 freetype2 2>/dev/null) -lnx
 

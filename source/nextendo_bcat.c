@@ -13,8 +13,8 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Planning Splatoon 2 : GET /api/bcat/<titleId> -> zip extrait dans le LayeredFS d'Atmosphere (USA, EUR, JPN).
-// System/GameConfigSetting.xml et dummy/ ne sont PAS dans le zip : ils viennent de la romfs du .nro.
+// Splatoon 2 schedule: GET /api/bcat/<titleId> -> zip extracted into Atmosphere's LayeredFS (USA, EUR, JPN).
+// System/GameConfigSetting.xml and dummy/ are NOT in the zip: they come from the .nro's own romfs.
 #include <switch.h>
 #include <string.h>
 #include <stdlib.h>
@@ -193,7 +193,7 @@ static int downloadZip(const char *titleIdLower) {
     int status = 0;
     long len = net_https_get_to_file(BCAT_HOST, apiPath, f, &status, NULL);
     fclose(f);
-    fsdevCommitDevice("sdmc");  // rend le zip visible/immediat pour miniz (sinon lecture tronquee)
+    fsdevCommitDevice("sdmc");  // makes the zip immediately visible to miniz (else a truncated read)
 
     if (status == 204) { remove(ZIP_TMP); return 204; }
     if (status != 200) { remove(ZIP_TMP); return status ? status : NET_ERR_TIMEOUT; }  // status=0 = sin respuesta HTTP (fallo pre-read)
@@ -204,7 +204,7 @@ static int downloadZip(const char *titleIdLower) {
 }
 
 static bool extractZip(const char *dstBase) {
-    // Diagnostic : taille reelle sur la SD + signature PK.
+    // Diagnostics: real size on the SD card + PK signature.
     struct stat zst;
     if (stat(ZIP_TMP, &zst) == 0) {
         logf_("  ZIP_TMP taille=%lld", (long long)zst.st_size);
@@ -226,7 +226,7 @@ static bool extractZip(const char *dstBase) {
 
     mz_zip_archive zip;
     memset(&zip, 0, sizeof(zip));
-    // Lecture en MEMOIRE : le lecteur fichier de miniz depend de fseek/ftell sur le cache fsdev, source connue d'echecs illisibles.
+    // Read into MEMORY: miniz's file reader relies on fseek/ftell over the fsdev cache, a known source of unreadable failures.
     FILE *zr = fopen(ZIP_TMP, "rb");
     if (!zr) { logf_("  ECHEC fopen zip (mem)"); return false; }
     fseek(zr, 0, SEEK_END);
@@ -286,7 +286,7 @@ static bool extractZip(const char *dstBase) {
         }
     }
     mz_zip_reader_end(&zip);
-    free(zbuf);   // apres end : miniz lit le buffer jusqu'au end
+    free(zbuf);   // after end: miniz reads the buffer right up to the end
     return allOk;
 }
 
@@ -322,7 +322,7 @@ nextendo_bcat_result nextendo_bcat_install_s2(void) {
       else
           logf_("  DNS %s -> ECHEC (h_errno=%d)", BCAT_HOST, h_errno); }
 
-    // Un seul zip EUR telecharge, installe dans le LayeredFS de toutes les regions.
+    // A single EUR zip is downloaded, then installed into every region's LayeredFS.
     static const char EUR_ID[] = "0100F8F0000A2000";
     static const char *regionIds[] = { "01003BC0000A0000", "0100F8F0000A2000" };
 

@@ -24,8 +24,8 @@
 
 #include "nextendo_flag.h"
 
-// 110 pays de la table interne de MK8D 3.0.5, tries par code.
-// Fabriquer le patch d'un code ne veut PAS dire que le jeu a la texture : n'ajouter une entree qu'apres l'avoir vue en jeu.
+// 110 countries from MK8D 3.0.5's internal table, sorted by code.
+// Being able to build a patch for a code does NOT mean the game has the texture: only add an entry after seeing it in game.
 const FlagEntry g_flags[FLAG_COUNT] = {
     {"AE","United Arab Emirates"}, {"AL","Albania"},   {"AO","Angola"},
     {"AR","Argentina"},            {"AT","Austria"},    {"AU","Australia"},
@@ -75,7 +75,7 @@ const FlagEntry g_flags[FLAG_COUNT] = {
 #define EXEFS_PATCHES_DIR "sdmc:/atmosphere/exefs_patches"
 #define FLAG_FOLDER_PREFIX "Nextendo Country "
 #define BUILD_ID "FE941ED5BA14BE5D505698DA1BBF4FE7"
-// Amont : alyeri/nextendo-mk8d-country-flags, reproduit ici a l'octet pres par flag_build_ips().
+// Upstream: alyeri/nextendo-mk8d-country-flags, reproduced byte for byte here by flag_build_ips().
 
 int flag_find_index(const char *code) {
     for (int i = 0; i < FLAG_COUNT; i++)
@@ -130,10 +130,10 @@ void flag_remove(void) {
     closedir(d);
 }
 
-// Fabrication LOCALE du patch : les 110 patches amont sont le meme fichier de 103 octets a cinq positions pres.
-// Regenere les 110 a l'octet pres depuis le seul patch JP (verifie 110/110), donc plus de telechargement ni de "fallo de red".
+// LOCAL patch generation: the 110 upstream patches are the same 103-byte file bar five positions.
+// Regenerates all 110 byte for byte from the JP patch alone (verified 110/110), so no download and no "network error".
 #define FLAG_IPS_LEN 103
-// Immediats des MOVZ, releves sur les patches reels : records 1 et 2 portent les deux lettres, le record 3 les porte empaquetees.
+// MOVZ immediates, read off the real patches: records 1 and 2 each carry both letters, record 3 carries them packed.
 #define FLAG_OFF_A1 10
 #define FLAG_OFF_Z1 18
 #define FLAG_OFF_A2 43
@@ -152,7 +152,7 @@ static const unsigned char FLAG_IPS_TEMPLATE[FLAG_IPS_LEN] = {
     0x0A, 0x00, 0x00, 0x14, 0x45, 0x4F, 0x46,
 };
 
-// Reecrit l'immediat d'un MOVZ W8 : 0x52800000 | (imm16 << 5) | Rd, en petit-boutiste.
+// Rewrites the immediate of a MOVZ W8: 0x52800000 | (imm16 << 5) | Rd, little-endian.
 static void putMovzImm(unsigned char *p, unsigned int imm16) {
     unsigned int w = 0x52800000u | ((imm16 & 0xFFFFu) << 5) | 8u;
     p[0] = (unsigned char)(w);
@@ -161,7 +161,7 @@ static void putMovzImm(unsigned char *p, unsigned int imm16) {
     p[3] = (unsigned char)(w >> 24);
 }
 
-// Refuse tout ce qui n'est pas deux majuscules ASCII : un code libre ecrirait n'importe quoi dans l'ExeFS.
+// Rejects anything that is not two ASCII capitals: a free-form code would write junk into the game's ExeFS.
 static bool flag_build_ips(const char *code, unsigned char out[FLAG_IPS_LEN]) {
     if (!code || !code[0] || !code[1] || code[2]) return false;
     unsigned int a = (unsigned char)code[0];

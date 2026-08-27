@@ -13,40 +13,40 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Mini client HTTP/HTTPS sur sockets libnx, sans dependance externe.
+// Minimal HTTP/HTTPS client on libnx sockets, no external dependency.
 #ifndef NEXTENDO_NET_H
 #define NEXTENDO_NET_H
 #include <switch.h>
 #include <stddef.h>
 #include <stdio.h>
 
-// Codes d'erreur reseau (retournes dans *out_status quand la fonction retourne NULL).
-#define NET_ERR_UNKNOWN  -1   // erreur non specifiee
-#define NET_ERR_CONNECT  -2   // connexion echouee (timeout / refuse / host injoignable)
-#define NET_ERR_SOCKET   -3   // echec creation socket
-#define NET_ERR_TIMEOUT  -4   // timeout reponse (select/recv)
-#define NET_ERR_PROTO    -5   // reponse HTTP invalide (pas de status-line ou headers malformes)
-#define NET_ERR_OOM      -6   // allocation memoire
+// Network error codes (returned in *out_status when the function returns NULL).
+#define NET_ERR_UNKNOWN  -1   // unspecified failure
+#define NET_ERR_CONNECT  -2   // connect failed (timeout / refused / host unreachable)
+#define NET_ERR_SOCKET   -3   // socket creation failed
+#define NET_ERR_TIMEOUT  -4   // response timed out (select/recv)
+#define NET_ERR_PROTO    -5   // malformed HTTP response (no status line or bad headers)
+#define NET_ERR_OOM      -6   // out of memory
 
-// Corps a free() par l'appelant, NULL si echec. *out_status : >0 = code HTTP, <0 = NET_ERR_*.
+// Body must be free()d by the caller, NULL on failure. *out_status: >0 = HTTP code, <0 = NET_ERR_*.
 unsigned char *net_http_get(const char *ip, int port, const char *path, size_t *out_len, int *out_status);
 
-// Idem en streaming fichier (pas de gros malloc : tient en mode applet). -1 = reseau, -2 = ecriture.
+// Same, streamed to a file (no large malloc, so it survives applet mode). -1 = network, -2 = write.
 long net_http_get_to_file(const char *ip, int port, const char *path, FILE *out, int *out_status);
 
-// HTTPS vers host:443. Necessite socketInitializeDefault() + sslInitialize() avant.
+// HTTPS to host:443. Requires socketInitializeDefault() + sslInitialize() beforehand.
 unsigned char *net_https_get(const char *host, const char *path,
                               size_t *out_len, int *out_status);
 
-// Appele depuis la boucle de lecture : a garder court. `total` vaut 0 si le serveur ne l'annonce pas.
+// Called from the read loop, so keep it short. `total` is 0 when the server does not announce it.
 typedef void (*net_progress_fn)(long received, long total);
 
-// `onProgress` peut etre NULL et reste muet pendant une redirection : compter son corps ferait reculer la barre.
+// `onProgress` may be NULL, and stays silent during a redirect: counting its body would rewind the bar.
 long net_https_get_to_file(const char *host, const char *path,
                             FILE *out, int *out_status,
                             net_progress_fn onProgress);
 
-// Dernier Result libnx d'un appel SSL ayant echoue (diagnostic).
+// Last libnx Result from a failed SSL call (diagnostics).
 extern Result g_net_ssl_rc;
 
 #endif // NEXTENDO_NET_H

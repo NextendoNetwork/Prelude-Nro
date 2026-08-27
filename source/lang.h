@@ -9,7 +9,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// i18n : chaînes indexées par StringID, langue courante persistée dans sdmc:/switch/prelude_lang.txt.
+// i18n: strings indexed by StringID, current language persisted in sdmc:/switch/prelude_lang.txt.
 #ifndef LANG_H
 #define LANG_H
 
@@ -45,7 +45,7 @@ typedef enum {
     STR_CONFIRM_REBOOT,         // "The console will REBOOT now."
     STR_CONFIRM_RESTART_NEXTENDO, // "After reboot: connected to Nextendo servers."
     STR_CONFIRM_RESTART_NINTENDO, // "After reboot: back to official Nintendo servers." (sysNAND : PRODINFO reel)
-    STR_CONFIRM_RESTART_NINTENDO_EMU, // idem emuMMC : PRODINFO blanchi -> services en ligne HS
+    STR_CONFIRM_RESTART_NINTENDO_EMU, // same on emuMMC: PRODINFO blanked -> online services dead
     STR_CONFIRM_CLOSE_GAMES,    // "Close any running games before confirming."
     STR_CONFIRM_A,              // "A: Confirm"
     STR_CONFIRM_B,              // "B: Cancel"
@@ -153,7 +153,7 @@ typedef enum {
     STR_STATUS_FLAG_WRITE_FAIL,       // "Write error"
     STR_STATUS_FLAG_WRITE_FAIL_DESC,  // "Cannot write to SD card."
 
-    // --- Nouveau cromo (rail de navigation + barre de boutons) ---
+    // --- New chrome (navigation rail + button bar) ---
     STR_RAIL_MODE,                    // "Mode"        entree du rail
     STR_RAIL_S2,                      // "Splatoon 2"
     STR_RAIL_FLAG,                    // "Country"
@@ -161,30 +161,30 @@ typedef enum {
     STR_RAIL_S3,                      // "Splatoon 3"  entree du rail
     STR_RAIL_LANG,                    // "Language"    (R)
 
-    // --- Section Splatoon 3 : etat des correctifs ---
-    STR_S3_TITLE,          // "Correctifs Splatoon 3"
-    STR_S3_OK,             // parches al dia
-    STR_S3_STALE,          // la carte porte une autre version que ce .nro
-    STR_S3_MISSING,        // rien sur la carte
-    STR_S3_FIX,            // quoi faire
-    STR_S3_DNS_OFF,        // dns.mitm coupe
-    STR_S3_NINTENDO,       // en mode Nintendo, c'est normal
-    STR_S3_WHERE,          // ou vivent les fichiers
-    STR_S3_LIMIT,          // ce que ce controle ne peut pas dire
-    STR_S3_VERSION,        // pense a ne pas mettre le jeu a jour
-    STR_S3_INSTALL,        // bouton : poser les correctifs
-    STR_S3_REINSTALL,      // bouton : les reposer alors qu'ils sont deja la
-    STR_S3_REINSTALL_SUB,  // sous-titre du bouton
-    STR_S3_DONE,           // resultat : ecrits, il faut redemarrer
-    STR_BADGE_ACTIVE,                 // "Active"      pastille du mode courant
-    STR_HINT_APPLY,                   // "Apply"       barre de boutons
+    // --- Splatoon 3 section: patch status ---
+    STR_S3_TITLE,          // "Splatoon 3 patches"
+    STR_S3_OK,             // patches up to date
+    STR_S3_STALE,          // the card holds a different version than this .nro
+    STR_S3_MISSING,        // nothing on the card
+    STR_S3_FIX,            // what to do about it
+    STR_S3_DNS_OFF,        // dns.mitm is off
+    STR_S3_NINTENDO,       // in Nintendo mode this is expected
+    STR_S3_WHERE,          // where the files live
+    STR_S3_LIMIT,          // what this check cannot tell you
+    STR_S3_VERSION,        // reminder not to update the game
+    STR_S3_INSTALL,        // button: write the patches
+    STR_S3_REINSTALL,      // button: write them again although they are already there
+    STR_S3_REINSTALL_SUB,  // button subtitle
+    STR_S3_DONE,           // result: written, a reboot is needed
+    STR_BADGE_ACTIVE,                 // "Active"      badge on the current mode
+    STR_HINT_APPLY,                   // "Apply"       button bar
     STR_HINT_EXIT,                    // "Exit"
     STR_HINT_BACK,                    // "Back"
     STR_HINT_CHANGE,                  // "Change"
-    STR_HINT_OPEN,                    // "Open"   (rail -> panneau)
-    STR_HINT_UPDATE,                  // "Update" (seule action possible sous verrou MAJ)
+    STR_HINT_OPEN,                    // "Open"   (rail -> panel)
+    STR_HINT_UPDATE,                  // "Update" (the only action allowed under the update lock)
 
-    // --- Section SSBU (lignes + interrupteur) ---
+    // --- SSBU section (rows + toggle) ---
     STR_S2_TITLE_MOD,                 // "Mod"
     STR_SSBU_APPLIES,                 // "Applies on reboot in Nextendo mode"
     STR_SSBU_INSTALLED,               // "Installed"
@@ -195,24 +195,24 @@ typedef enum {
     STR_SSBU_OC_ON_DESC,              // "Turn it off if you use Horizon OC / sys-clk"
     STR_SSBU_OC_OFF_DESC,             // "Compatible with Horizon OC / sys-clk"
 
-    // --- Sauvegarde des hosts de l'utilisateur (premier lancement / mise a jour) ---
+    // --- Backup of the user's hosts files (first launch / after an update) ---
     STR_BACKUP_TITLE,           // "Back up your current DNS files?"
-    STR_BACKUP_BODY1,           // ce que Prelude va ecraser
-    STR_BACKUP_BODY2,           // ou la copie est rangee
+    STR_BACKUP_BODY1,           // what Prelude is about to overwrite
+    STR_BACKUP_BODY2,           // where the copy is kept
     STR_USEBAK_TITLE,           // "Use that backup for Nintendo mode?"
     STR_USEBAK_BODY1,
     STR_USEBAK_BODY2,
     STR_ASK_A_YES,              // "A: Yes"
     STR_ASK_B_NO,               // "B: No"
-    STR_BACKUP_SAVED,           // toast/status apres copie
-    STR_BACKUP_NONE,            // rien a copier (carte vierge, ou deja en mode Nextendo)
+    STR_BACKUP_SAVED,           // toast/status shown after copying
+    STR_BACKUP_NONE,            // nothing to copy (blank card, or already in Nextendo mode)
 
     STR_COUNT
 } StringID;
 
 extern Lang g_lang;
 
-// Relit la langue depuis la SD, sinon LANG_EN.
+// Reads the language back from the SD card, else LANG_EN.
 void lang_init(void);
 
 void lang_save(void);

@@ -13,12 +13,12 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// BGM en boucle depuis romfs:/bgm.mp3 (mpg123 + audout). Non-fatal : sans fichier ni audio, l'app continue en silence.
+// Looping BGM from romfs:/bgm.mp3 (mpg123 + audout). Non-fatal: with no file or no audio, the app runs on in silence.
 #ifndef AUDIO_H
 #define AUDIO_H
 #include <switch.h>
 
 bool audio_init(void);
-void audio_exit(void);   // arrete le thread de decodage, puis libere
+void audio_exit(void);   // stops the decoder thread first, then frees
 
 #endif // AUDIO_H

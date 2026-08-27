@@ -13,26 +13,26 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Auto-MAJ : compare le tag de releases/latest (API GitHub) a NEXTENDO_VERSION_*, puis telecharge le .nro.
+// Self-update: compares the releases/latest tag (GitHub API) against NEXTENDO_VERSION_*, then downloads the .nro.
 #include <switch.h>
 #include <string.h>
-#include <strings.h>   // strcasecmp (extension .nro insensible a la casse)
+#include <strings.h>   // strcasecmp (case-insensitive .nro extension)
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <errno.h>     // trace du motif exact d'un echec d'ecriture
+#include <errno.h>     // traces the exact reason a write failed
 
 #include "nextendo_update.h"
 #include "nextendo_net.h"
-#include "nextendo_apply.h"   // nextendo_trace : diagnostic de l'updater depuis la carte
-#include "audio.h"            // la BGM tient un FILE* ouvert sur le romfs (cf. releaseRomfs)
+#include "nextendo_apply.h"   // nextendo_trace: updater diagnostics readable from the SD card
+#include "audio.h"            // the BGM holds a FILE* open on the romfs (see releaseRomfs)
 
 // GitHub API for latest release
 #define GH_API_HOST  "api.github.com"
 #define GH_API_PATH  "/repos/NextendoNetwork/Prelude-Nro/releases/latest"
 #define GH_API_PORT  443
 
-// Cible = le .nro qu'on EXECUTE (argv[0] de hbmenu). Un chemin fixe deposait une 2e copie et laissait l'ancienne au lancement.
+// Target = the .nro we are RUNNING (hbmenu's argv[0]). A fixed path dropped a 2nd copy and kept launching the old one.
 #define LEGACY_NRO_FILE "sdmc:/switch/nextendo.nro"
 #define LEGACY_TMP_FILE "sdmc:/switch/nextendo.nro.new"
 
@@ -40,7 +40,7 @@ static char g_self_nro[512] = {0};
 static char g_self_tmp[520] = {0};
 
 void nextendo_update_set_self_path(const char *argv0) {
-    // Sans argv exploitable : le chemin historique vaut mieux qu'une ecriture a un endroit invente.
+    // With no usable argv: the historical path beats writing to a made-up location.
     if (!argv0 || !*argv0) return;
     size_t n = strlen(argv0);
     if (n < 5 || n >= sizeof(g_self_nro)) return;
@@ -51,14 +51,14 @@ void nextendo_update_set_self_path(const char *argv0) {
         snprintf(g_self_nro, sizeof(g_self_nro), "sdmc:%s", argv0);
     else
         return;
-    // Le .new va A COTE de la cible : rename() ne traverse alors aucune frontiere.
+    // The .new goes NEXT TO the target, so rename() never crosses a boundary.
     snprintf(g_self_tmp, sizeof(g_self_tmp), "%s.new", g_self_nro);
 }
 
 static const char *nroPath(void) { return g_self_nro[0] ? g_self_nro : LEGACY_NRO_FILE; }
 static const char *nroTmp(void)  { return g_self_tmp[0] ? g_self_tmp : LEGACY_TMP_FILE; }
 
-// Sans Content-Length le stream rapporte total=0 : on retombe sur la taille deja donnee par l'API GitHub.
+// Without Content-Length the stream reports total=0: we fall back on the size the GitHub API already gave us.
 static nextendo_progress_fn g_progress_cb    = NULL;
 static long                 g_progress_total = 0;
 
@@ -67,15 +67,15 @@ static void progressRelay(long received, long total) {
     if (g_progress_cb) g_progress_cb(NUP_PHASE_DOWNLOAD, received, total);
 }
 
-// Ecrase dst SANS le supprimer d'abord : c'est la brique des trois tentatives de remplacement ci-dessous.
+// Overwrites dst WITHOUT deleting it first: this is the building block of the three attempts below.
 static bool copyOver(const char *src, const char *dst) {
     FILE *in = fopen(src, "rb");
     if (!in) return false;
-    // 17 Mo a poser : sans signalement l'ecran reste fige sur 100 % pendant toute l'ecriture.
+    // 17 MB to write out: with no progress reported, the screen sits frozen at 100 % for the whole write.
     long copied = 0;
     if (g_progress_cb) g_progress_cb(NUP_PHASE_INSTALL, 0, g_progress_total);
     FILE *out = fopen(dst, "wb");
-    // errno mis de cote avant chaque fclose(), qui a le droit de l'ecraser meme en reussissant.
+    // errno is saved before each fclose(), which is allowed to clobber it even when it succeeds.
     if (!out) { int e = errno; fclose(in); errno = e; return false; }
     char cbuf[16384];
     size_t n;
@@ -87,27 +87,27 @@ static bool copyOver(const char *src, const char *dst) {
         if (g_progress_cb) g_progress_cb(NUP_PHASE_INSTALL, copied, g_progress_total);
     }
     fclose(in);
-    if (fclose(out) != 0) { if (ok) err = errno; ok = false; }   // ecriture differee
+    if (fclose(out) != 0) { if (ok) err = errno; ok = false; }   // deferred write
     if (!ok) errno = err;
     return ok;
 }
 
-// errno distingue un verrou (EBUSY / EACCES) d'une carte pleine (ENOSPC) ou d'un chemin absent (ENOENT).
+// errno tells a lock (EBUSY / EACCES) apart from a full card (ENOSPC) or a missing path (ENOENT).
 static void traceErr(const char *step) {
     char m[160];
     snprintf(m, sizeof(m), "%s (errno=%d)", step, errno);
     nextendo_trace(m);
 }
 
-// romfsInit() garde un handle FS ouvert sur le .nro en cours : sans le lacher, aucune tentative de remplacement ne peut aboutir.
-// L'audio part en premier (mpg123 tient un FILE* sur bgm.mp3) ; polices et images sont deja en RAM, l'ecran reste affichable.
+// romfsInit() keeps an FS handle open on the running .nro: without releasing it, no replacement attempt can ever succeed.
+// Audio goes first (mpg123 holds a FILE* on bgm.mp3); fonts and images are already in RAM, so the screen still draws.
 static void releaseRomfs(void) {
-    audio_exit();    // ferme le FILE* que mpg123 tient sur romfs:/bgm.mp3
-    romfsExit();     // ferme le handle FS sur le .nro courant
+    audio_exit();    // closes the FILE* mpg123 holds on romfs:/bgm.mp3
+    romfsExit();     // closes the FS handle on the running .nro
     nextendo_trace("59 update: romfs relache (le .nro cible n'est plus ouvert)");
 }
 
-// Non-fatal, mais un ECHEC doit laisser l'app utilisable : mode, drapeaux et BCAT lisent tous le romfs.
+// Non-fatal, but a FAILURE must leave the app usable: mode, flags and BCAT all read the romfs.
 static void restoreRomfs(void) {
     if (R_FAILED(romfsInit())) { nextendo_trace("69 WARN update: romfs non remonte"); return; }
     audio_init();
@@ -116,7 +116,7 @@ static void restoreRomfs(void) {
 static char g_download_url[512] = {0};
 static long g_download_size = 0;
 
-// Tolere les espaces autour de ':'. Renvoie le premier caractere apres le guillemet ouvrant, ou NULL.
+// Tolerates whitespace around ':'. Returns the first character inside the opening quote, or NULL.
 static char *json_str_value(const char *haystack, const char *key) {
     char *p = strstr(haystack, key);
     if (!p) return NULL;
@@ -128,7 +128,7 @@ static char *json_str_value(const char *haystack, const char *key) {
     return p + 1;  // point inside the opening quote
 }
 
-// Tolere le JSON compact comme l'indente : l'API GitHub renvoie la seconde forme.
+// Tolerates compact and pretty-printed JSON alike: the GitHub API returns the latter.
 static bool parse_github_json(const unsigned char *b, size_t len, int *maj, int *min, int *patch,
                               char *url, size_t urlcap, long *size) {
     (void)len;
@@ -153,7 +153,7 @@ static bool parse_github_json(const unsigned char *b, size_t len, int *maj, int 
         }
     }
 
-    // strtol saute les espaces de tete tout seul.
+    // strtol skips leading whitespace by itself.
     char *sp = strstr((const char*)b, "\"size\":");
     if (sp) { sp += 7; *size = strtol(sp, NULL, 10); }
 
@@ -181,7 +181,7 @@ NextendoUpdate nextendo_update_check(void) {
 
     if (body && status == 200) {
         int maj = 0, min = 0, patch = 0; long sz = 0;
-        // parse_github_json travaille au strstr : le corps renvoye n'a PAS de NUL, on recopie dans un tampon termine.
+        // parse_github_json works with strstr: the returned body has NO NUL, so we copy into a terminated buffer.
         char *json = (char *)malloc(len + 1);
         if (json) {
             memcpy(json, body, len);
@@ -204,7 +204,7 @@ NextendoUpdate nextendo_update_check(void) {
     return u;
 }
 
-// Necessite sslInitialize() avant l'appel.
+// Requires sslInitialize() before calling.
 nextendo_update_result nextendo_update_apply(long expectedSize, nextendo_progress_fn onProgress) {
     if (g_download_url[0] == '\0') return NUP_NET_FAIL;
     long expected = expectedSize > 0 ? expectedSize : g_download_size;
@@ -243,14 +243,14 @@ nextendo_update_result nextendo_update_apply(long expectedSize, nextendo_progres
     if (expected > 0 && len != expected) { remove(nroTmp()); return NUP_SIZE_FAIL; }
     fsdevCommitDevice("sdmc");
 
-    // Remplacement du .nro : trois tentatives en filet, chacune tracant son errno.
+    // Replacing the .nro: three attempts as a safety net, each tracing its own errno.
     bool placed = false;
 
-    // La cible est ouverte par notre propre romfs : sans ce lacher, les trois tentatives echouent toutes.
+    // The target is held open by our own romfs: without this release, all three attempts fail.
     releaseRomfs();
     { char m[600]; snprintf(m, sizeof(m), "59b update: cible = %s", nroPath()); nextendo_trace(m); }
 
-    // 1) Ecrasement EN PLACE : passe quand le fichier resiste a la suppression mais pas a l'ecriture.
+    // 1) Overwrite IN PLACE: works when the file resists deletion but not writing.
     if (copyOver(nroTmp(), nroPath())) {
         placed = true;
         remove(nroTmp());
@@ -259,7 +259,7 @@ nextendo_update_result nextendo_update_apply(long expectedSize, nextendo_progres
         traceErr("60 update: ecrasement en place refuse");
     }
 
-    // 2) remove + rename : le chemin historique, le plus propre quand il fonctionne.
+    // 2) remove + rename: the historical path, and the cleanest when it works.
     if (!placed) {
         if (remove(nroPath()) != 0) traceErr("61 update: remove de la cible refuse");
         if (rename(nroTmp(), nroPath()) == 0) {
@@ -274,7 +274,7 @@ nextendo_update_result nextendo_update_apply(long expectedSize, nextendo_progres
         }
     }
 
-    // 3) Dernier recours, l'emplacement historique : un fichier a deplacer a la main vaut mieux qu'une erreur.
+    // 3) Last resort, the historical location: a file to move by hand beats an error.
     if (!placed && strcmp(nroPath(), LEGACY_NRO_FILE) != 0) {
         mkdir("sdmc:/switch", 0777);
         if (copyOver(nroTmp(), LEGACY_NRO_FILE)) {
@@ -285,7 +285,7 @@ nextendo_update_result nextendo_update_apply(long expectedSize, nextendo_progres
             traceErr("63 update: repli sur switch/nextendo.nro refuse");
         }
     } else if (!placed) {
-        // Deja a l'emplacement historique : plus aucun repli possible, autant le dire.
+        // Already at the historical location: no fallback left, so say so.
         nextendo_trace("63 update: pas de repli possible (deja switch/nextendo.nro)");
     }
 
@@ -296,10 +296,10 @@ nextendo_update_result nextendo_update_apply(long expectedSize, nextendo_progres
         return NUP_WRITE_FAIL;
     }
 
-    // L'app reste utilisable jusqu'a ce que l'utilisateur la ferme et la relance.
+    // The app stays usable until the user closes and relaunches it.
     restoreRomfs();
 
-    // Orphelin laisse par une MAJ d'avant ce correctif. On ne supprime QUE ce chemin-la, jamais un autre.
+    // Orphan left by an update from before this fix. We delete ONLY that path, never any other.
     if (strcmp(nroPath(), LEGACY_NRO_FILE) != 0) {
         remove(LEGACY_NRO_FILE);
         remove(LEGACY_TMP_FILE);
