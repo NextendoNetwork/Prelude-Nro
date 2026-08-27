@@ -147,6 +147,7 @@ int main(int argc, char **argv) {
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     PadState pad;
     padInitializeDefault(&pad);
+    hidInitializeTouchScreen();
 
     if (!ui_init()) {
         audio_exit();
@@ -196,6 +197,7 @@ int main(int argc, char **argv) {
     // Séquence ↑↓←→ pour basculer l'IP du serveur.
     enum { SEQ_IDLE, SEQ_UP, SEQ_UP_DOWN, SEQ_UP_DOWN_LEFT };
     int seqState = SEQ_IDLE;
+    bool touchHeld = false;   // front montant : un doigt pose ne vaut qu'une fois
 
     // Dans un thread : le picker s'affiche immediatement et reste navigable pendant ce temps.
     s_boot.mode = current;
@@ -220,6 +222,27 @@ int main(int argc, char **argv) {
         if (!bootPublished && s_boot.done) { upd = s_boot.upd; bootPublished = true; }
         padUpdate(&pad);
         u64 k = padGetButtonsDown(&pad);
+
+        // Le tag vise la DERNIERE frame dessinee, c'est-a-dire exactement ce que l'utilisateur voit.
+        int tap = UI_TAP_NONE;
+        HidTouchScreenState ts = {0};
+        if (hidGetTouchScreenStates(&ts, 1) && ts.count > 0) {
+            if (!touchHeld) tap = ui_tap_at((int)ts.touches[0].x, (int)ts.touches[0].y);
+            touchHeld = true;
+        } else {
+            touchHeld = false;
+        }
+        // La barre de boutons declenche la touche qu'elle affiche, les modales leur moitie A / B.
+        // Le reste (rail, lignes, bandeau) depend de l'ecran et se traite dans sa branche.
+        if (UI_TAP_KIND(tap) == UI_TAP_BTN) {
+            switch (UI_TAP_INDEX(tap)) {
+            case UI_BTN_A:    k |= HidNpadButton_A;    break;
+            case UI_BTN_B:    k |= HidNpadButton_B;    break;
+            case UI_BTN_Y:    k |= HidNpadButton_Y;    break;
+            case UI_BTN_PLUS: k |= HidNpadButton_Plus; break;
+            }
+        } else if (tap == UI_TAP_YES) k |= HidNpadButton_A;
+        else if (tap == UI_TAP_NO)    k |= HidNpadButton_B;
         // Prouve que la boucle tourne ET que l'entree remonte : absente, c'est padUpdate/HID qui est mort, pas la logique.
         if (!tracedLoop && k) { nextendo_trace("16 premiere touche detectee dans la boucle"); tracedLoop = true; }
 
@@ -255,6 +278,20 @@ int main(int argc, char **argv) {
                     while (!s_boot.done) svcSleepThread(10000000ULL);  // 10 ms
                     upd = s_boot.upd;
                     bootPublished = true;
+                }
+
+                // Taper une section y va ; taper une ligne la choisit ET l'active, comme sur
+                // l'ecran d'accueil de la console. Le verrou de MAJ ne laisse passer que le bandeau.
+                if (upd.available) {
+                    if (tap == UI_TAP_UPDATE) k |= HidNpadButton_Y;
+                } else if (UI_TAP_KIND(tap) == UI_TAP_RAIL) {
+                    railSel = UI_TAP_INDEX(tap);
+                    paneFocus = false;
+                    status[0] = 0;
+                } else if (UI_TAP_KIND(tap) == UI_TAP_ROW) {
+                    int rows = ui_pane_rows(railSel, ssbuInstalled);
+                    int r = UI_TAP_INDEX(tap);
+                    if (r < rows) { paneSel = r; paneFocus = true; k |= HidNpadButton_A; }
                 }
 
                 if (upd.available) {
@@ -501,6 +538,10 @@ int main(int argc, char **argv) {
             screen = SCREEN_UPD_RESULT;
 
         } else if (screen == SCREEN_FLAG_MENU) {
+            if (UI_TAP_KIND(tap) == UI_TAP_ROW) {
+                int idx = flagScroll + UI_TAP_INDEX(tap);
+                if (idx >= 0 && idx < FLAG_COUNT) flagSel = idx;
+            }
             if (k & (HidNpadButton_B | HidNpadButton_Plus)) {
                 screen = SCREEN_PICKER;
             } else if (k & HidNpadButton_A) {

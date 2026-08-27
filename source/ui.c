@@ -158,7 +158,28 @@ static void drawCF(u32 *b, u32 st, FT_Face fc, int cx, int y, int px, u32 col, c
 
 // Primitives partagees (en-tete, barre de boutons, curseur, lignes) : tout part de HDR_H / FTR_H / ROW_H et de l'echelle SP_*.
 // A plat, sans degrade, comme les Parametres.
+// Zones tactiles de la frame courante. Enregistrees AU MOMENT du dessin : une zone ne peut donc
+// pas deriver de ce qui est affiche, et une ligne qui n'est pas dessinee n'est pas touchable.
+typedef struct { int x, y, w, h, tag; } HitRect;
+#define UI_MAX_HITS 32
+static HitRect s_hits[UI_MAX_HITS];
+static int     s_hitN;
+
+static void hitAdd(int x, int y, int w, int h, int tag) {
+    if (s_hitN < UI_MAX_HITS) s_hits[s_hitN++] = (HitRect){ x, y, w, h, tag };
+}
+
+// Parcours a l'envers : la derniere zone dessinee est celle du dessus, donc celle qui gagne.
+int ui_tap_at(int x, int y) {
+    for (int i = s_hitN - 1; i >= 0; i--) {
+        const HitRect *r = &s_hits[i];
+        if (x >= r->x && x < r->x + r->w && y >= r->y && y < r->y + r->h) return r->tag;
+    }
+    return UI_TAP_NONE;
+}
+
 static void chromeClear(u32 *b, u32 st) {
+    s_hitN = 0;   // nouvelle frame : les zones de la precedente ne valent plus rien
     u32 sw = st / sizeof(u32), bg = packColor(theme_bg());
     for (int y = 0; y < FB_H; y++)
         for (int x = 0; x < FB_W; x++) b[y * sw + x] = bg;
@@ -187,7 +208,7 @@ static void chromeFooter(u32 *b, u32 st, const Hint *hints, int n, const char *r
     int cy = y + FTR_H / 2;
     int x  = SP_LG;
     for (int i = 0; i < n; i++) {
-        int d = 30;
+        int d = 30, x0 = x;
         roundedCard(b, st, x, cy - d / 2, d, d, d / 2, packColor(theme_text2()));
         int bw = measureF(s_semi, FS_CAP, hints[i].btn);
         drawF(b, st, s_semi, x + (d - bw) / 2, cy + FS_CAP / 3,
@@ -195,6 +216,16 @@ static void chromeFooter(u32 *b, u32 st, const Hint *hints, int n, const char *r
         x += d + SP_XS;
         drawF(b, st, s_reg, x, cy + FS_CAP / 3, FS_CAP, packColor(theme_text2()), hints[i].label);
         x += measureF(s_reg, FS_CAP, hints[i].label) + SP_LG;
+        // Le tag porte la TOUCHE affichee, pas le rang : la barre change de contenu selon l'ecran,
+        // et un tag positionnel ferait declencher autre chose que ce qui est ecrit.
+        int btn = -1;
+        if      (hints[i].btn[0] == 'A') btn = UI_BTN_A;
+        else if (hints[i].btn[0] == 'B') btn = UI_BTN_B;
+        else if (hints[i].btn[0] == 'Y') btn = UI_BTN_Y;
+        else if (hints[i].btn[0] == '+') btn = UI_BTN_PLUS;
+        // Toute la hauteur de la barre est prise : viser un cercle de 30 px au doigt est illusoire.
+        // On retire l'ecart qui suit le libelle : sans ca la zone de A mordrait jusque sous B.
+        if (btn >= 0) hitAdd(x0 - SP_XS, y, (x - SP_LG - x0) + SP_XS * 2, FTR_H, UI_TAP_BTN + btn);
     }
     if (right && right[0]) {
         int w = measureF(s_reg, FS_CAP, right);
@@ -356,6 +387,7 @@ static void drawRail(u32 *b, u32 st, int railSel, bool railFocused) {
         }
         drawF(b, st, on ? s_semi : s_reg, SP_LG, y + 36, FS_ITEM,
               packColor(on ? theme_text() : theme_text2()), railLabel(i));
+        hitAdd(0, y, RAIL_W - 2, 56, UI_TAP_RAIL + i);
         y += 58;
     }
 }
@@ -382,6 +414,7 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
         snprintf(m, sizeof(m), lang_str(STR_UPDATE_BANNER), updMaj, updMin, updPatch);
         roundedCard(b, st, x, y, w, 56, RADIUS, packColor(C_RED));
         drawF(b, st, s_semi, x + SP_MD, y + 36, FS_BODY, packColor(COL(0xFF,0xFF,0xFF)), m);
+        hitAdd(x, y, w, 56, UI_TAP_UPDATE);
         y += 56 + SP_SM;
     }
 
@@ -395,6 +428,7 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
             int rowY = y;
             y = chromeRow(b, st, x, y, w, FOC(i), isNx ? "Nextendo" : "Nintendo",
                           lang_str(isNx ? STR_DESC_NEXTENDO : STR_DESC_NINTENDO));
+            hitAdd(x, rowY, w, ROW_H, UI_TAP_ROW + i);
             roundedCard(b, st, x + SP_MD - 4, rowY + ROW_H / 2 - 6, 12, 12, 6,
                         packColor(isNx ? C_BLUE : C_RED));
             if (current == i)
@@ -405,6 +439,7 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
         int rowY = y;
         y = chromeRow(b, st, x, y, w, FOC(0), lang_str(STR_S2_TITLE_MOD),
                       lang_str(STR_SSBU_APPLIES));
+        hitAdd(x, rowY, w, ROW_H, UI_TAP_ROW + 0);
         chromeBadge(b, st, x, rowY, w,
                     lang_str(ssbuInstalled ? STR_SSBU_INSTALLED : STR_SSBU_NOT_INSTALLED),
                     ssbuInstalled ? theme_ok() : theme_sep(),
@@ -414,6 +449,7 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
             y = chromeRow(b, st, x, y, w, FOC(1), lang_str(STR_SSBU_OC),
                           lang_str(ssbuOcDisabled ? STR_SSBU_OC_OFF_DESC
                                                   : STR_SSBU_OC_ON_DESC));
+            hitAdd(x, rowY, w, ROW_H, UI_TAP_ROW + 1);
             chromeToggle(b, st, x, rowY, w, !ssbuOcDisabled);
         }
     } else if (railSel == RAIL_S3) {
@@ -448,16 +484,22 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
         y += FS_CAP + SP_LG;
 
         // Absente en mode Nintendo : ce mode retire volontairement la pile de certificats, la reposer serait une faille.
-        if (current != CHOICE_NINTENDO)
+        if (current != CHOICE_NINTENDO) {
+            int rowY = y;
             y = chromeRow(b, st, x, y, w, FOC(0),
                           lang_str(aJour ? STR_S3_REINSTALL : STR_S3_INSTALL),
                           lang_str(STR_S3_REINSTALL_SUB));
+            hitAdd(x, rowY, w, ROW_H, UI_TAP_ROW + 0);
+        }
 
     } else if (railSel == RAIL_S2) {
+        int rowY = y;
         y = chromeRow(b, st, x, y, w, FOC(0), lang_str(STR_RAIL_S2), lang_str(STR_DESC_S2));
+        hitAdd(x, rowY, w, ROW_H, UI_TAP_ROW + 0);
     } else if (railSel == RAIL_FLAG) {
         int rowY = y;
         y = chromeRow(b, st, x, y, w, FOC(0), lang_str(STR_RAIL_FLAG), lang_str(STR_DESC_FLAG));
+        hitAdd(x, rowY, w, ROW_H, UI_TAP_ROW + 0);
         if (flagCode && flagCode[0])
             chromeBadge(b, st, x, rowY, w, flagCode, theme_sep(), theme_text());
     } else {
@@ -465,6 +507,7 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
         for (int i = 0; i < 4; i++) {
             int rowY = y;
             y = chromeRow(b, st, x, y, w, FOC(i), lang_str(ids[i]), NULL);
+            hitAdd(x, rowY, w, ROW_H, UI_TAP_ROW + i);
             if (i == (int)g_lang)
                 chromeBadge(b, st, x, rowY, w, lang_str(STR_LANG_DEFAULT),
                             theme_ok(), COL(0xFF,0xFF,0xFF));
@@ -547,6 +590,8 @@ void ui_draw_confirm(int selection, bool warnNoEmummc) {
     int ay = dy + dh - 64;
     fillRect(b, st, dx, ay, dw, 2, packColor(theme_sep()));
     fillRect(b, st, dx + dw / 2, ay, 2, 64, packColor(theme_sep()));
+    hitAdd(dx,          ay, dw / 2, 64, UI_TAP_NO);
+    hitAdd(dx + dw / 2, ay, dw / 2, 64, UI_TAP_YES);
     drawCF(b, st, s_reg,  dx + dw / 4,     ay + 42, FS_BODY,
            packColor(theme_text2()), lang_str(STR_CONFIRM_B));
     drawCF(b, st, s_semi, dx + dw * 3 / 4, ay + 42, FS_BODY,
@@ -584,6 +629,8 @@ void ui_draw_question(const char *title, const char *l1, const char *l2) {
     int ay = dy + dh - 64;
     fillRect(b, st, dx, ay, dw, 2, packColor(theme_sep()));
     fillRect(b, st, dx + dw / 2, ay, 2, 64, packColor(theme_sep()));
+    hitAdd(dx,          ay, dw / 2, 64, UI_TAP_NO);
+    hitAdd(dx + dw / 2, ay, dw / 2, 64, UI_TAP_YES);
     drawCF(b, st, s_reg,  dx + dw / 4,     ay + 42, FS_BODY,
            packColor(theme_text2()), lang_str(STR_ASK_B_NO));
     drawCF(b, st, s_semi, dx + dw * 3 / 4, ay + 42, FS_BODY,
@@ -690,6 +737,8 @@ void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch) {
     int ay = dy + dh - 64;
     fillRect(b, st, dx, ay, dw, 2, packColor(theme_sep()));
     fillRect(b, st, dx + dw / 2, ay, 2, 64, packColor(theme_sep()));
+    hitAdd(dx,          ay, dw / 2, 64, UI_TAP_NO);
+    hitAdd(dx + dw / 2, ay, dw / 2, 64, UI_TAP_YES);
     drawCF(b, st, s_reg,  dx + dw / 4,     ay + 42, FS_BODY,
            packColor(theme_text2()), lang_str(STR_UPD_CONFIRM_B));
     drawCF(b, st, s_semi, dx + dw * 3 / 4, ay + 42, FS_BODY,
@@ -748,6 +797,7 @@ void ui_draw_flag_menu(int sel, int scroll, const char *currentCode) {
             drawF(b, st, s_semi, x + w - SP_MD - tw, ry + 36, FS_CAP,
                   packColor(theme_ok()), lbl);
         }
+        hitAdd(x, ry, w, rh - 6, UI_TAP_ROW + r);
     }
 
     const Hint h[] = { { "A", lang_str(STR_SSBU_INSTALL) }, { "B", lang_str(STR_HINT_BACK) } };

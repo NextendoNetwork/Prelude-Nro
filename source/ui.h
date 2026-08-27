@@ -22,6 +22,25 @@
 bool ui_init(void);
 void ui_exit(void);
 
+// --- Tactile. Le framebuffer est en 1280x720, comme le tactile : les coordonnees se correspondent 1:1.
+// Les zones sont enregistrees PENDANT le dessin, donc elles collent toujours a ce qui est affiche.
+enum {
+    UI_TAP_NONE   = 0,
+    UI_TAP_RAIL   = 0x100,   // + index de section (RAIL_*)
+    UI_TAP_ROW    = 0x200,   // + index de ligne du panneau / de la liste
+    UI_TAP_BTN    = 0x300,   // + UI_BTN_* : la barre declenche EXACTEMENT la touche qu'elle affiche
+    UI_TAP_UPDATE = 0x400,   // bandeau de mise a jour
+    UI_TAP_YES    = 0x500,   // moitie droite de la barre d'actions d'une modale
+    UI_TAP_NO     = 0x600,   // moitie gauche
+};
+enum { UI_BTN_A = 0, UI_BTN_B, UI_BTN_Y, UI_BTN_PLUS };
+
+#define UI_TAP_KIND(t)  ((t) & ~0xFF)
+#define UI_TAP_INDEX(t) ((t) & 0xFF)
+
+// Zone touchee sur la DERNIERE frame dessinee, ou UI_TAP_NONE.
+int ui_tap_at(int x, int y);
+
 // Ecran principal. paneFocused oriente les fleches (panneau vs rail) et seul le cote focalise porte le curseur.
 void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
                     const char *status, int updMaj, int updMin, int updPatch,
