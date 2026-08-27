@@ -24,17 +24,8 @@
 
 #include "nextendo_flag.h"
 
-// 110 countries from MK8D 3.0.5 internal table, sorted by code.
-//
-// CE NOMBRE EST CELUI DU JEU, pas le notre. Le patch n encode pas un index : il ecrit les
-// DEUX LETTRES du code en ASCII, donc flag_build_ips() sait fabriquer N IMPORTE QUEL code
-// a deux lettres. La tentation est alors d en ajouter — CN / HK / TW ont ete ajoutes ici
-// le 2026-08-23 pour l issue #17, puis RETIRES : alyeri, qui a releve la table d origine
-// dans le jeu, confirme que MK8D n a pas ces drapeaux. Le patch fait bien dire "CN" a la
-// console, mais le jeu n a aucune image a afficher en face.
-//
-// Donc : pouvoir fabriquer le patch ne veut pas dire que le pays existe. N ajouter une
-// entree ici QU APRES l avoir vue s afficher en jeu.
+// 110 pays de la table interne de MK8D 3.0.5, tries par code.
+// Fabriquer le patch d'un code ne veut PAS dire que le jeu a la texture : n'ajouter une entree qu'apres l'avoir vue en jeu.
 const FlagEntry g_flags[FLAG_COUNT] = {
     {"AE","United Arab Emirates"}, {"AL","Albania"},   {"AO","Angola"},
     {"AR","Argentina"},            {"AT","Austria"},    {"AU","Australia"},
@@ -84,9 +75,7 @@ const FlagEntry g_flags[FLAG_COUNT] = {
 #define EXEFS_PATCHES_DIR "sdmc:/atmosphere/exefs_patches"
 #define FLAG_FOLDER_PREFIX "Nextendo Country "
 #define BUILD_ID "FE941ED5BA14BE5D505698DA1BBF4FE7"
-// Plus de telechargement : le patch est fabrique localement (voir flag_build_ips).
-// L amont reste alyeri/nextendo-mk8d-country-flags, dont ce code reproduit la sortie
-// a l octet pres pour les 110 pays qu il publie.
+// Amont : alyeri/nextendo-mk8d-country-flags, reproduit ici a l'octet pres par flag_build_ips().
 
 int flag_find_index(const char *code) {
     for (int i = 0; i < FLAG_COUNT; i++)
@@ -129,7 +118,6 @@ void flag_remove(void) {
         size_t nlen = strlen(e->d_name);
         if (nlen == pfxLen + 2
             && strncmp(e->d_name, FLAG_FOLDER_PREFIX, pfxLen) == 0) {
-            // Remove the IPS file inside, then the directory.
             char ipsPath[FS_MAX_PATH];
             snprintf(ipsPath, sizeof(ipsPath), "%s/%s/" BUILD_ID ".ips",
                      EXEFS_PATCHES_DIR, e->d_name);
@@ -142,34 +130,10 @@ void flag_remove(void) {
     closedir(d);
 }
 
-// --- Fabrication LOCALE du patch, sans reseau ---------------------------------------
-//
-// Les 110 patches du depot alyeri sont le MEME fichier de 103 octets ; seules CINQ
-// positions changent, et ce qu'on y ecrit n'est pas un index de pays mais les deux
-// LETTRES du code en ASCII. Le jeu recoit "JP" parce que le patch fait MOVZ W8,#0x4A
-// ('J') puis MOVZ W8,#0x50 ('P'), a deux endroits, plus les deux lettres empaquetees
-// en un seul immediat 16 bits au troisieme.
-//
-// Verifie, pas suppose : en repartant du seul patch JP et en substituant ces cinq
-// positions, on regenere les 110 patches du depot A L'OCTET PRES (110/110, 2026-08-23).
-//
-// D'ou ce choix : telecharger 103 octets en HTTPS depuis GitHub pour y placer deux
-// caracteres ASCII etait un aller-retour reseau — donc un mode d'echec, "fallo de red"
-// — pour une donnee que l'application peut ecrire elle-meme. La generation locale
-// supprime cette panne, marche hors ligne, et rend n'importe quel code a deux lettres
-// installable : c'est ce qui permet CN / HK / TW (issue #17) sans rien publier en amont.
-//
-// CE QUE CA NE GARANTIT PAS : que MK8D possede la TEXTURE du drapeau demande. Le patch
-// dit au jeu "je suis CN" ; si sa table interne n'a pas ce pays, l'affichage sera vide
-// ou incorrect. Les 110 d'origine viennent de cette table, les trois nouveaux non.
-//
-// Si MK8D est mis a jour, le build id change et Atmosphere ignore le patch — mais
-// BUILD_ID est deja code en dur ici, donc ce cas imposait deja une MAJ de Prelude,
-// telechargement ou pas. On ne perd rien.
+// Fabrication LOCALE du patch : les 110 patches amont sont le meme fichier de 103 octets a cinq positions pres.
+// Regenere les 110 a l'octet pres depuis le seul patch JP (verifie 110/110), donc plus de telechargement ni de "fallo de red".
 #define FLAG_IPS_LEN 103
-// Decalages des cinq octets a substituer (immediats des MOVZ), releves sur les patches
-// reels et non calcules : records 1 et 2 portent chacun les deux lettres, le record 3
-// les porte empaquetees.
+// Immediats des MOVZ, releves sur les patches reels : records 1 et 2 portent les deux lettres, le record 3 les porte empaquetees.
 #define FLAG_OFF_A1 10
 #define FLAG_OFF_Z1 18
 #define FLAG_OFF_A2 43
@@ -188,9 +152,7 @@ static const unsigned char FLAG_IPS_TEMPLATE[FLAG_IPS_LEN] = {
     0x0A, 0x00, 0x00, 0x14, 0x45, 0x4F, 0x46,
 };
 
-// putMovzImm reecrit l'immediat d'un MOVZ W8 32 bits en place. Encodage AArch64 :
-// 0x52800000 | (imm16 << 5) | Rd, ecrit en petit-boutiste. Le registre et le reste de
-// l'instruction viennent de la plantilla, on ne touche QUE l'immediat.
+// Reecrit l'immediat d'un MOVZ W8 : 0x52800000 | (imm16 << 5) | Rd, en petit-boutiste.
 static void putMovzImm(unsigned char *p, unsigned int imm16) {
     unsigned int w = 0x52800000u | ((imm16 & 0xFFFFu) << 5) | 8u;
     p[0] = (unsigned char)(w);
@@ -199,9 +161,7 @@ static void putMovzImm(unsigned char *p, unsigned int imm16) {
     p[3] = (unsigned char)(w >> 24);
 }
 
-// flag_build_ips ecrit dans out le patch du pays demande. code doit etre deux lettres
-// majuscules ASCII ; tout le reste est refuse plutot que de produire un patch qui
-// ferait ecrire n'importe quoi dans l'ExeFS du jeu.
+// Refuse tout ce qui n'est pas deux majuscules ASCII : un code libre ecrirait n'importe quoi dans l'ExeFS.
 static bool flag_build_ips(const char *code, unsigned char out[FLAG_IPS_LEN]) {
     if (!code || !code[0] || !code[1] || code[2]) return false;
     unsigned int a = (unsigned char)code[0];
@@ -223,10 +183,8 @@ int flag_install(const char *code) {
     const unsigned char *data = ips;
     const size_t len = FLAG_IPS_LEN;
 
-    // Remove any previously installed flag.
     flag_remove();
 
-    // Create destination directory.
     char flagDir[FS_MAX_PATH];
     snprintf(flagDir, sizeof(flagDir), "%s/" FLAG_FOLDER_PREFIX "%s",
              EXEFS_PATCHES_DIR, code);
@@ -236,7 +194,6 @@ int flag_install(const char *code) {
         return -2;
     }
 
-    // Write the IPS patch.
     char ipsPath[FS_MAX_PATH];
     snprintf(ipsPath, sizeof(ipsPath), "%s/" BUILD_ID ".ips", flagDir);
 

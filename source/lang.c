@@ -9,10 +9,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// ============================================================
-//  Prelude — tables de traductions EN / ES / PT.
-//  La langue courante est lue/écrite depuis la SD.
-// ============================================================
+// Tables de traductions EN / ES / PT.
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -24,10 +21,7 @@ Lang g_lang = LANG_EN;
 
 #define LANG_PATH "sdmc:/switch/prelude_lang.txt"
 
-// --- String tables -------------------------------------------------------
-// Each column: EN, ES, PT, FR.
-// Must match StringID enum order exactly.
-// Brand names (Nextendo, Nintendo, Prelude) are kept as-is.
+// Colonnes EN, ES, PT, FR, dans l'ordre EXACT de StringID. Les noms de marque ne se traduisent pas.
 static const char *s_strings[STR_COUNT][4] = {
     // --- Picker screen ---
     [STR_TITLE_PRELUDE]      = { "Prelude", "Prelude", "Prelude", "Prelude" },
@@ -40,9 +34,7 @@ static const char *s_strings[STR_COUNT][4] = {
                                  "Servidores Nextendo: online custom, iconos, amigos. Cuenta Nextendo requerida.",
                                  "Servidores Nextendo: online custom, iconos, amigos. Conta Nextendo necessaria.",
                                    "Serveurs Nextendo : online custom, icônes, amis. Compte Nextendo requis." },
-    // Ne promet PAS "fonctionnement normal" : en emuMMC ce mode blanchit le PRODINFO,
-    // donc les services en ligne n'authentifient plus. Le detail par type de console
-    // est dit sur l'ecran de confirmation (STR_CONFIRM_RESTART_NINTENDO*).
+    // Ne promet PAS "fonctionnement normal" : en emuMMC le PRODINFO blanchi coupe les services en ligne.
     [STR_DESC_NINTENDO]      = { "Official Nintendo DNS restored. Telemetry stays blocked.",
                                  "DNS oficial de Nintendo restaurado. La telemetria sigue bloqueada.",
                                  "DNS oficial da Nintendo restaurado. A telemetria continua bloqueada.",
@@ -63,10 +55,7 @@ static const char *s_strings[STR_COUNT][4] = {
                                    "A : installer le planning       < > : changer de choix       B : quitter" },
 
     // --- Update banner ---
-    // Les trois traductions n'avaient qu'UN %d alors que l'appelant passe maj, min ET
-    // patch : elles affichaient « (v3) » au lieu de « (v3.3.9) ». Sans consequence pour
-    // varargs (les arguments en trop sont ignores), mais la version annoncee etait fausse
-    // partout sauf en anglais.
+    // Les trois %d sont obligatoires : l'appelant passe maj, min ET patch.
     [STR_UPDATE_BANNER]      = { "MANDATORY update (v%d.%d.%d)   -   press Y to install",
                                  "Actualizacion OBLIGATORIA (v%d.%d.%d)   -   presiona Y para instalar",
                                  "Atualizacao OBRIGATORIA (v%d.%d.%d)   -   pressione Y para instalar",
@@ -89,19 +78,12 @@ static const char *s_strings[STR_COUNT][4] = {
                                        "Al reiniciar: conectado a los servidores Nextendo Network.",
                                        "Ao reiniciar: conectado aos servidores Nextendo Network.",
                                    "Au redémarrage : connecté aux serveurs Nextendo Network." },
-    // Console SANS emuMMC : le PRODINFO reste le vrai (blank_prodinfo_emummc n'a aucun
-    // effet en sysNAND), donc le retour aux serveurs officiels est REEL — eShop compris.
-    // C'est aussi le cas a risque, d'ou l'avertissement STR_WARN_* affiche juste dessous.
+    // Sans emuMMC le PRODINFO reste le vrai : retour REEL aux serveurs officiels, d'ou l'avertissement STR_WARN_* dessous.
     [STR_CONFIRM_RESTART_NINTENDO] = { "After reboot: back to official Nintendo servers.",
                                        "Al reiniciar: vuelta a los servidores oficiales Nintendo.",
                                        "Ao reiniciar: volta aos servidores oficiais Nintendo.",
                                    "Au redémarrage : retour aux serveurs officiels Nintendo." },
-    // Console AVEC emuMMC : ce mode pose blank_prodinfo_emummc=1, l'identite de l'appareil
-    // est blanchie et les services en ligne ne s'authentifient plus (ni eShop ni jeu en
-    // ligne). C'est VOULU (c'est la protection anti-ban), mais l'ancien texte promettait
-    // un "fonctionnement normal" qui n'arrivait jamais.
-    // Tenu sous ~65 caracteres : la carte fait 820 px et le texte est centre sur UNE
-    // ligne a 22 px. La plus longue chaine du design actuel en fait 63.
+    // Avec emuMMC l'identite est blanchie : ni eShop ni jeu en ligne. A tenir sous ~65 caracteres (une ligne de 820 px).
     [STR_CONFIRM_RESTART_NINTENDO_EMU] = { "After reboot: official DNS. Online services will not work.",
                                            "Al reiniciar: DNS oficial. Los servicios en linea no iran.",
                                            "Ao reiniciar: DNS oficial. Os servicos online nao irao.",
@@ -430,9 +412,7 @@ static const char *s_strings[STR_COUNT][4] = {
                                           "Nao e possivel gravar no cartao SD.",
                                           "Impossible d'ecrire sur la carte SD." },
 
-    // --- Nouveau cromo : rail + barre de boutons. Volontairement courts —
-    //     une entree de rail ou un libelle de bouton se lit d'un coup d'oeil,
-    //     pas en phrase. ---
+    // --- Rail + barre de boutons : volontairement courts, ca se lit d'un coup d'oeil. ---
     [STR_RAIL_MODE]   = { "Mode",       "Modo",       "Modo",       "Mode" },
     [STR_RAIL_S2]     = { "Splatoon 2", "Splatoon 2", "Splatoon 2", "Splatoon 2" },
     [STR_RAIL_FLAG]   = { "Country",    "Pais",       "Pais",       "Pays" },
@@ -524,8 +504,6 @@ static const char *s_strings[STR_COUNT][4] = {
                                    "Compatible avec Horizon OC / sys-clk" },
 };
 
-// ============================================================
-
 void lang_init(void) {
     FILE *f = fopen(LANG_PATH, "rb");
     if (!f) { g_lang = LANG_EN; return; }
@@ -543,7 +521,6 @@ void lang_save(void) {
     if (g_lang == LANG_ES) ch = 'S';
     else if (g_lang == LANG_PT) ch = 'P';
     else if (g_lang == LANG_FR) ch = 'F';
-    // else LANG_EN -> 'E'
     FILE *f = fopen(LANG_PATH, "wb");
     if (!f) {
         mkdir("sdmc:/switch", 0777);

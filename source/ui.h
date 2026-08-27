@@ -13,70 +13,47 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// ============================================================
-//  Nextendo .nro — rendu UI (framebuffer + police partagee via FreeType).
-// ============================================================
+// Rendu UI : framebuffer 1280x720 RGBA8888 + police partagee via FreeType.
 #ifndef UI_H
 #define UI_H
 #include <switch.h>
 #include "nextendo_apply.h"   // NextendoS3Status : la section Splatoon 3 affiche cet etat
 
-// Init framebuffer (1280x720 RGBA8888) + police partagee (pl + FreeType).
 bool ui_init(void);
 void ui_exit(void);
 
-// Dessine l'ecran de bascule. selection = carte visee (mode NON-actuel), current = mode ACTUEL
-// (badge "ACTUEL"), focus = FOCUS_MODE / FOCUS_S2 / FOCUS_FLAG, status = optionnel.
-// updMaj > 0 -> bandeau discret "MàJ dispo (vN) - Y pour installer".
-// flagCode = code 2 lettres du drapeau installe, ou "" si aucun.
-// Ecran principal, navigation a deux colonnes.
-//   railSel      section courante (RAIL_*), paneSel ligne courante du panneau
-//   paneFocused  true = les fleches agissent sur le panneau, false = sur le rail
-// Le curseur n'est dessine que du cote qui a le focus.
+// Ecran principal. paneFocused oriente les fleches (panneau vs rail) et seul le cote focalise porte le curseur.
 void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
                     const char *status, int updMaj, int updMin, int updPatch,
                     const char *flagCode, bool ssbuInstalled, bool ssbuOcDisabled,
                     const NextendoS3Status *s3);
 
-// Nombre de lignes du panneau d'une section — main.c borne le focus avec ca.
+// Nombre de lignes du panneau : main.c borne le focus avec ca.
 int ui_pane_rows(int railSel, bool ssbuInstalled);
 
-// Popup de CONFIRMATION avant d'appliquer + redemarrer (A = confirmer, B = annuler).
-// warnNoEmummc : console sans emuMMC (CFW sur la memoire interne). Le mode NINTENDO ne peut alors
-// offrir AUCUNE protection d'identite -> l'ecran de confirmation le dit franchement. Passe par
-// main.c (detecte une seule fois) : sonder spl a chaque frame serait absurde.
+// warnNoEmummc : sans emuMMC le mode NINTENDO ne protege pas l'identite, l'ecran le dit franchement.
 void ui_draw_confirm(int selection, bool warnNoEmummc);
 
-// Ecran d'explication "Planning en ligne Splatoon 2" (A = installer, B = retour).
 void ui_draw_s2_info(void);
 
-// Ecran de progression pendant l'installation (une ligne d'etat centree).
 void ui_draw_progress(const char *line);
 
-// Idem, mais avec une barre de progression. `pct` est borne a 0..100 ; `detail` est
-// la ligne sous la barre (NULL => "Patiente..."). Sert aux operations longues ou un
-// ecran fige laisse croire que l'app est plantee (telechargement de 17 Mo de MAJ).
+// `pct` est borne a 0..100 ; `detail` est la ligne sous la barre (NULL => "Patiente...").
 void ui_draw_progress_bar(const char *line, int pct, const char *detail);
 
-// Ecran de resultat (succes vert / erreur rouge). A/B = retour.
+// Succes en vert, erreur en rouge.
 void ui_draw_result(const char *title, const char *msg, bool ok);
 
-// Toast semi-transparent en bas de l'écran (texte centré).
 void ui_draw_toast(const char *text);
 
-// Ecran de chargement (titre "Prelude" + texte centree).
 void ui_draw_loading(const char *text);
 
-// Ecran de confirmation avant mise a jour (A = installer, B = annuler).
 void ui_draw_upd_confirm(int buildMaj, int buildMin, int buildPatch);
 
-// Menu de selection de drapeau MK8D (110 pays, scrollable).
-// sel = index selectionne (0-109), scroll = premier index visible,
-// currentCode = code 2 lettres installe (ou "" si aucun).
+// scroll = premier index visible ; currentCode = drapeau deja installe, ou "".
 void ui_draw_flag_menu(int sel, int scroll, const char *currentCode);
 
-// Question OUI/NON generique posee par-dessus l'ecran courant (A = oui, B = non).
-// Utilisee au premier lancement pour la sauvegarde des hosts de l'utilisateur.
+// Question OUI/NON par-dessus l'ecran courant (A = oui, B = non).
 void ui_draw_question(const char *title, const char *l1, const char *l2);
 
 #endif // UI_H

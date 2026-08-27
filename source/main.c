@@ -13,14 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// ============================================================
-//  Nextendo .nro — point d'entree.
-//  Ecran principal :
-//    [ NEXTENDO ]   [ NINTENDO ]           <- bascule de mode (A = appliquer + REDEMARRER)
-//    [ Splatoon 2 - Installer le planning ] <- installe le byaml BCAT de S2 (sans redemarrage)
-//  Navigation : < > pour passer de la paire de modes a la barre S2.
-//  Au lancement : verif de mise a jour -> bandeau discret + Y pour installer.
-// ============================================================
+// Point d'entree : ecran a deux colonnes (rail de sections + panneau), verif de MAJ au lancement.
 #include <stdio.h>
 #include <string.h>
 #include <switch.h>
@@ -42,16 +35,10 @@ enum {
     SCREEN_UPD_CONFIRM, SCREEN_UPD_PROGRESS, SCREEN_UPD_RESULT,
     SCREEN_FLAG_MENU, SCREEN_FLAG_PROGRESS, SCREEN_FLAG_RESULT,
     SCREEN_BACKUP_ASK, SCREEN_USEBAK_ASK,
-    // Smash et Langue ne sont plus des ecrans : leur contenu vit dans le
-    // panneau du rail. Ne restent modaux que confirmation / progression /
-    // resultat, et la liste de 110 pays, trop longue pour un panneau.
+    // Ne restent modaux que confirmation / progression / resultat, et la liste de 110 pays, trop longue pour un panneau.
 };
 
-// --- Log de sortie : consolide l'etat de la session dans sdmc:/prelude_exit.log ---
-// Ecrit au moment de quitter l'appli (apres la boucle principale) : resume du contexte
-// (build, boot, mode, IP, MAJ) + le resultat du dernier ecran + le contenu integral de
-// prelude_trace.txt et de nextendo_bcat.log. C'est le point d'entree unique du debug :
-// si un joueur signale "Fallo la descarga", ce fichier dit exactement ou ca a casse.
+// Log de sortie (sdmc:/prelude_exit.log) : contexte + dernier ecran + trace et log BCAT integraux. Point d'entree unique du debug.
 #define EXIT_LOG_PATH "sdmc:/prelude_exit.log"
 
 static void appendFileToLog(FILE *out, const char *path) {
@@ -90,11 +77,7 @@ static void writeExitLog(int lastScreen, const char *lastTitle, const char *last
     fsdevCommitDevice("sdmc");
 }
 
-// --- Progression de la mise a jour -------------------------------------------
-// Appele depuis la boucle de telechargement / de copie, donc sur le hilo principal :
-// on peut dessiner directement. On ne redessine QUE lorsque le pourcentage change,
-// sinon les 17 Mo declenchent ~550 presentations de framebuffer, chacune calee sur le
-// vsync — l'affichage couterait plus longtemps que le telechargement lui-meme.
+// Appele sur le hilo principal, donc on dessine directement. On ne redessine qu'au changement de pourcentage : sinon 17 Mo = ~550 presentations calees sur le vsync.
 static int s_updLastPct = -1;
 static nextendo_update_phase s_updLastPhase = NUP_PHASE_DOWNLOAD;
 
@@ -120,20 +103,9 @@ static void updateProgress(nextendo_update_phase phase, long done, long total) {
                          pct, detail);
 }
 
-// --- Travail reseau du demarrage, hors du hilo principal ---------------------
-// Verif de MAJ + diagnostic reseau + warmup DNS prenaient plusieurs secondes en
-// bloquant le rendu : trois ecrans "Cargando..." avant de voir quoi que ce soit.
-// On les deporte ici pour que le picker s'affiche tout de suite.
-//
-// SYNCHRONISATION : `done` est le seul point de rendez-vous. Le thread ecrit
-// `upd` PUIS pose done=1 ; main ne lit `upd` qu'apres avoir vu done=1. La barriere
-// est ce qui garantit que main ne voit pas un `upd` a moitie ecrit.
-//
-// Le verrou de MAJ OBLIGATOIRE en depend : tant que done vaut 0 on ne SAIT PAS
-// s'il existe une version plus recente, donc toute action qui consulte `upd` doit
-// attendre (cf. le rendez-vous sur bootPublished dans la boucle). Sans ca, un
-// joueur assez rapide appliquerait un changement de mode pendant la fenetre ou
-// upd.available est encore faux par IGNORANCE — le verrou qu on ne veut pas ouvrir.
+// Travail reseau du demarrage, hors du hilo principal : il durait plusieurs secondes et bloquait le rendu.
+// `done` est le seul rendez-vous : le thread ecrit `upd` PUIS pose done=1, et la barriere garantit que main ne voit pas un `upd` a moitie ecrit.
+// Le verrou de MAJ obligatoire en depend : tant que done vaut 0, on IGNORE s'il existe une version plus recente.
 static struct {
     NextendoUpdate  upd;
     int             mode;
@@ -151,10 +123,7 @@ static void bootWorker(void *arg) {
     // Diagnostic reseau : nncs2 + etat hosts (trace pour 2123-0011 / 2810-1224).
     socketInitializeDefault();
     nextendo_diag_network();
-    // DNS warmup : Atmosphere's DNS-MITM is lazy-loaded (reads hosts on first DNS query).
-    // nnAccount linking fails if DNS-MITM hasn't loaded when it resolves accounts.nintendo.com.
-    // Clover's workaround (BrowseNX from DBI title override) confirms any DNS query forces init;
-    // we do it here so linking works without user workarounds.
+    // DNS-MITM d'Atmosphere est charge paresseusement : sans cette requete d'amorcage, l'association nnAccount echoue.
     if (s_boot.mode == CHOICE_NEXTENDO) {
         struct hostent *he = gethostbyname("accounts.nintendo.com");
         nextendo_trace(he ? "15a dns warmup: accounts.nintendo.com OK"
@@ -168,9 +137,7 @@ static void bootWorker(void *arg) {
 }
 
 int main(int argc, char **argv) {
-    // hbmenu passe le chemin du .nro lance dans argv[0]. L'updater doit remplacer CE
-    // fichier : sans ca il ecrivait a un emplacement fixe, la mise a jour se deposait a
-    // cote, et l'utilisateur relancait indefiniment l'ancienne version.
+    // argv[0] : l'updater doit remplacer CE fichier, sinon la MAJ se depose a cote et l'ancienne version se relance indefiniment.
     nextendo_update_set_self_path((argc > 0 && argv) ? argv[0] : NULL);
 
     romfsInit();
@@ -187,16 +154,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // La trace repart de zero a chaque lancement : elle documente LA session courante (celle dont
-    // l'utilisateur nous parle) et ne grossit pas indefiniment. Conservee en release : le gel du
-    // build 10 n'a jamais ete explique, donc si un joueur le revit, ce fichier est notre seul temoin.
+    // La trace repart de zero a chaque lancement : elle documente LA session dont l'utilisateur nous parle, et ne grossit pas.
     remove(NEXTENDO_TRACE_PATH);
     nextendo_trace("10 main: ui_init ok");
 
-    // Une console sans emuMMC fait tourner le CFW sur la memoire interne, donc avec son vrai
-    // identifiant : blank_prodinfo_emummc, la protection posee par le mode NINTENDO, n'a alors
-    // aucun effet. On previent au lieu de laisser croire a une protection inexistante.
-    // Detecte UNE fois (splInitialize/splExit), pas a chaque frame.
+    // Sans emuMMC, blank_prodinfo_emummc n'a aucun effet : on previent au lieu de laisser croire a une protection inexistante. Detecte UNE fois.
     nextendo_trace("11 avant detect_boot (splInitialize)");
     BootType boot = nextendo_detect_boot();
     nextendo_trace(boot == BOOT_SYSMMC  ? "12 detect_boot = SYSMMC (pas d emuMMC)"
@@ -205,15 +167,7 @@ int main(int argc, char **argv) {
     bool noEmummc = (boot == BOOT_SYSMMC);
 
     int  current = nextendo_current_mode();
-    // --- Rafraichir la carte SD au demarrage, si le mode Nextendo est DEJA actif. ---
-    // Les fichiers du romfs (correctifs Splatoon 3, CA, patches navigateur) n'etaient
-    // ecrits QU'A l'application du mode. Une mise a jour de Prelude remplacait donc le
-    // .nro sans rien changer sur la carte : le joueur gardait les correctifs de la
-    // version precedente et revoyait le meme code d'erreur, convaincu que la mise a
-    // jour n'avait servi a rien. C'est la cause de la moitie des signalements recus.
-    //
-    // On ne touche RIEN en mode Nintendo : ce mode retire volontairement la pile de
-    // certificats, et la reposer en douce serait une faille, pas un confort.
+    // Sans ca, mettre Prelude a jour laissait sur la carte les correctifs de la version precedente. Rien n'est touche en mode Nintendo.
     if (current == CHOICE_NEXTENDO) nextendo_provision_all_public();
 
     NextendoS3Status s3;
@@ -223,26 +177,20 @@ int main(int argc, char **argv) {
     int  paneSel = 0;           // ligne du panneau
     bool paneFocus = false;     // false = les fleches agissent sur le rail
     int  screen = SCREEN_PICKER;
-    // UNE SEULE FOIS, au tout premier lancement : on propose de sauvegarder les hosts
-    // dns.mitm que l'utilisateur avait AVANT nous. C'est la SEULE occasion de le faire —
-    // des qu'un mode est applique, les fichiers d'origine sont ecrases et il n'y a plus
-    // rien a sauver. Une fois la question posee, elle ne revient jamais.
+    // Seule occasion de sauvegarder les hosts d'AVANT nous : des qu'un mode est applique, les fichiers d'origine sont ecrases.
     if (nextendo_backup_prompt_needed()) screen = SCREEN_BACKUP_ASK;
     int  state  = 0;
     char status[160] = {0};
     char rTitle[64] = {0}, rMsg[192] = {0};
     bool rOk = false;
 
-    // Flag state
     int  flagSel    = 0;
     int  flagScroll = 0;
     char flagCurrent[3] = {0};
     flag_detect_current(flagCurrent);
 
-    // SSBU mod state
     bool ssbuInstalled = nextendo_ssbu_is_installed();
-    // Overclock embarque du mod : lu depuis la SD (presence de boot2.flag), pas
-    // suppose — le joueur a pu le couper a un lancement precedent de Prelude.
+    // Lu depuis la SD (presence de boot2.flag), pas suppose : le joueur a pu le couper a un lancement precedent.
     bool ssbuOcDisabled = nextendo_ssbu_oc_is_disabled();
 
     // Séquence ↑↓←→ pour basculer l'IP du serveur.
@@ -250,9 +198,7 @@ int main(int argc, char **argv) {
     int seqState = SEQ_IDLE;
     int toastFrames = 0;  // frames restantes d'affichage du toast
 
-    // Travail reseau du demarrage, DANS UN THREAD : il durait plusieurs secondes et
-    // bloquait le hilo principal, d'ou les trois ecrans "Cargando..." successifs.
-    // Le picker s'affiche maintenant immediatement et reste navigable pendant ce temps.
+    // Dans un thread : le picker s'affiche immediatement et reste navigable pendant ce temps.
     s_boot.mode = current;
     nextendo_trace("13 demarrage du thread reseau (picker deja affiche)");
     bool bootThreadOn = false;
@@ -260,8 +206,7 @@ int main(int argc, char **argv) {
         && R_SUCCEEDED(threadStart(&s_bootThread))) {
         bootThreadOn = true;
     } else {
-        // Pas de thread : on retombe sur l'ancien comportement synchrone plutot que
-        // de laisser upd non renseigne — le verrou de MAJ obligatoire en depend.
+        // Repli synchrone plutot que de laisser upd non renseigne : le verrou de MAJ obligatoire en depend.
         nextendo_trace("13b threadCreate KO -> repli synchrone");
         bootWorker(NULL);
     }
@@ -272,15 +217,11 @@ int main(int argc, char **argv) {
     bool tracedLoop = false, tracedConfirm = false;
     while (appletMainLoop()) {
         consoleUpdate(NULL);
-        // Publication passive : des que le thread reseau a fini, le bandeau de MAJ
-        // apparait de lui-meme, sans que l'utilisateur ait a toucher quoi que ce soit.
-        // One-shot (bootPublished) : une MAJ reussie remet upd.available a 0 et il ne
-        // faut pas que la copie ressuscite le bandeau a la frame suivante.
+        // One-shot : une MAJ reussie remet upd.available a 0, la copie ne doit pas ressusciter le bandeau a la frame suivante.
         if (!bootPublished && s_boot.done) { upd = s_boot.upd; bootPublished = true; }
         padUpdate(&pad);
         u64 k = padGetButtonsDown(&pad);
-        // Une seule fois : prouve que la boucle tourne ET que l'entree remonte (si A ne fait rien
-        // alors que cette ligne est absente, c'est padUpdate/HID qui est mort, pas la logique).
+        // Prouve que la boucle tourne ET que l'entree remonte : absente, c'est padUpdate/HID qui est mort, pas la logique.
         if (!tracedLoop && k) { nextendo_trace("16 premiere touche detectee dans la boucle"); tracedLoop = true; }
 
         // --- Séquence ↑↓←→ : bascule l'IP du serveur ---
@@ -305,18 +246,11 @@ int main(int argc, char **argv) {
 
         if (screen == SCREEN_PICKER) {
             if (state == 0) {
-                // + quitte toujours. B ne quitte que depuis le rail : dans le
-                // panneau il sert a revenir en arriere, et quitter l app sur un
-                // retour serait le piege classique de ce modele.
+                // B ne quitte que depuis le rail : dans le panneau il revient en arriere, et quitter sur un retour serait un piege.
                 if (k & HidNpadButton_Plus) break;
                 if ((k & HidNpadButton_B) && !paneFocus) break;
 
-                // Rendez-vous avec le thread reseau. La navigation (haut/bas/gauche/
-                // droite, R, L) n'attend RIEN — c'est ce qui fait disparaitre l'ecran
-                // de chargement. Seule une touche qui va CONSULTER upd attend, parce
-                // que tant que done vaut 0 on ignore s'il existe une MAJ obligatoire.
-                // En pratique le thread a fini bien avant qu'on arrive ici : l'attente
-                // ne se voit que si le reseau rame, et la elle est justifiee.
+                // Seule une touche qui va CONSULTER upd attend le thread reseau : la navigation, elle, n'attend rien.
                 if (k && !bootPublished) {
                     ui_draw_loading(lang_str(STR_CHECKING_UPDATE));
                     while (!s_boot.done) svcSleepThread(10000000ULL);  // 10 ms
@@ -325,26 +259,22 @@ int main(int argc, char **argv) {
                 }
 
                 if (upd.available) {
-                    // MAJ OBLIGATOIRE : tant qu'une version plus recente existe, le homebrew
-                    // est verrouille -> seules l'installation (Y) et la sortie (+/B) sont possibles.
+                    // MAJ OBLIGATOIRE : tout est verrouille sauf l'installation (Y) et la sortie (+/B).
                     if (k & HidNpadButton_Y) { screen = SCREEN_UPD_CONFIRM; }
                 } else if (!paneFocus) {
-                    // --- Colonne de gauche : on parcourt les sections ---
+                    // Colonne de gauche : on parcourt les sections.
                     if (k & HidNpadButton_AnyUp)   { railSel = (railSel + RAIL_N - 1) % RAIL_N; status[0] = 0; }
                     if (k & HidNpadButton_AnyDown) { railSel = (railSel + 1) % RAIL_N;          status[0] = 0; }
-                    // Droite ET A entrent dans le panneau : la fleche parce que c'est
-                    // le geste attendu entre deux colonnes, A parce que c'est le bouton
-                    // de validation et qu'on ne veut pas qu'il ne fasse rien ici.
+                    // Droite ET A entrent dans le panneau : la fleche est le geste attendu, A ne doit pas rester sans effet ici.
                     if (k & (HidNpadButton_AnyRight | HidNpadButton_A)) {
                         paneFocus = true;
                         paneSel = 0;
-                        // Sur MODE, on entre sur le mode NON courant : c'est celui vers
-                        // lequel on peut basculer, donc le choix par defaut utile.
+                        // On entre sur le mode NON courant : c'est celui vers lequel on peut basculer.
                         if (railSel == RAIL_MODE)
                             paneSel = (current == CHOICE_NEXTENDO) ? CHOICE_NINTENDO : CHOICE_NEXTENDO;
                     }
                 } else {
-                    // --- Colonne de droite : on parcourt les lignes de la section ---
+                    // Colonne de droite : on parcourt les lignes de la section.
                     int rows = ui_pane_rows(railSel, ssbuInstalled);
                     if (k & HidNpadButton_AnyUp)   paneSel = (paneSel + rows - 1) % rows;
                     if (k & HidNpadButton_AnyDown) paneSel = (paneSel + 1) % rows;
@@ -353,18 +283,13 @@ int main(int argc, char **argv) {
                     if (k & HidNpadButton_A) {
                         switch (railSel) {
                         case RAIL_MODE:
-                            // paneSel EST le mode choisi : avant, sel etait fige au
-                            // demarrage et l'utilisateur ne choisissait rien.
+                            // paneSel EST le mode choisi.
                             sel = paneSel;
                             nextendo_trace("17 A picker -> ecran de confirmation");
                             state = 1; status[0] = 0;
                             break;
                         case RAIL_S3:
-                            // Reecrit les fichiers du romfs sur la carte sans passer par
-                            // une bascule de mode complete : c'est le geste qui manquait
-                            // a ceux qui mettent Prelude a jour puis revoient le meme code
-                            // d'erreur. Interdit en mode Nintendo, qui retire la pile de
-                            // certificats expres — la reposer ici serait une faille.
+                            // Reecrit les fichiers du romfs sans bascule de mode complete. Interdit en mode Nintendo, qui retire la pile de certificats expres.
                             if (current != CHOICE_NINTENDO) {
                                 nextendo_provision_all_public();
                                 nextendo_s3_status(&s3);   // relire : le panneau doit refleter la carte
@@ -390,8 +315,7 @@ int main(int argc, char **argv) {
                                              lang_str(ssbuInstalled ? STR_SSBU_INSTALLED
                                                                     : STR_STATUS_SD_ERROR));
                                 }
-                                // Le nombre de lignes depend de ssbuInstalled : sans ce
-                                // reborne, paneSel peut pointer une ligne disparue.
+                                // Le nombre de lignes depend de ssbuInstalled : sans ce reborne, paneSel pointe une ligne disparue.
                                 int r = ui_pane_rows(railSel, ssbuInstalled);
                                 if (paneSel >= r) paneSel = r - 1;
                             } else {
@@ -404,10 +328,7 @@ int main(int argc, char **argv) {
                     }
                 }
                 if (screen == SCREEN_PICKER && state == 0) {
-                    // Tant que le thread reseau n'a pas publie, l'ecran DIT qu'il verifie.
-                    // Avant, ce message n'existait que dans la branche `if (k && ...)`
-                    // ci-dessus : il fallait appuyer sur une touche pour le voir
-                    // apparaitre, et sans cela l'app semblait simplement lente a demarrer.
+                    // Tant que le thread reseau n'a pas publie, l'ecran DIT qu'il verifie, sans attendre un appui.
                     if (!bootPublished)
                         ui_draw_loading(lang_str(STR_CHECKING_UPDATE));
                     else
@@ -465,8 +386,7 @@ int main(int argc, char **argv) {
                 int nb = nextendo_hosts_backup_create();
                 snprintf(status, sizeof(status), "%s",
                          lang_str(nb ? STR_BACKUP_SAVED : STR_BACKUP_NONE));
-                // Sans copie, la seconde question n'a pas d'objet : on ne demande pas
-                // a l'utilisateur quoi faire d'un fichier qui n'existe pas.
+                // Sans copie, la seconde question n'a pas d'objet.
                 if (nb) {
                     screen = SCREEN_USEBAK_ASK;
                 } else {
@@ -565,7 +485,7 @@ int main(int argc, char **argv) {
                 case NUP_OK: {
                     upd.available = false;   // faite : on retire le bandeau
                     snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_UPDATE_OK));
-                    // lang_str fournit un format avec %%d — controlee par le developpeur, safe
+                    // Format issu de lang_str : controle par le developpeur, donc sur.
                     char updFmt[64];
                     strncpy(updFmt, lang_str(STR_STATUS_UPDATE_OK_DESC), sizeof(updFmt) - 1);
                     updFmt[sizeof(updFmt) - 1] = '\0';
@@ -593,12 +513,7 @@ int main(int argc, char **argv) {
             } else if (k & HidNpadButton_A) {
                 screen = SCREEN_FLAG_PROGRESS;
             } else {
-                // AnyUp/AnyDown, pas Up/Down : ces dernieres ne couvrent que la croix
-                // directionnelle. Le reste du menu accepte deja le stick, cet ecran-ci
-                // etait le seul a l'ignorer — signale par un joueur.
-                //
-                // L et R sautent une page : la liste compte 110 pays, et les parcourir
-                // un par un pour arriver en bas est une corvee inutile.
+                // AnyUp/AnyDown, pas Up/Down : ces dernieres ignorent le stick. L et R sautent une page dans les 110 pays.
                 int avant = flagSel;
                 if (k & HidNpadButton_AnyUp)   flagSel--;
                 if (k & HidNpadButton_AnyDown) flagSel++;

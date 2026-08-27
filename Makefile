@@ -1,7 +1,4 @@
-#---------------------------------------------------------------------------------
-# Nextendo .nro — Makefile (libnx + FreeType + SDL2_mixer pour la BGM, romfs).
-# Base : template officiel switchbrew/switch-examples (application).
-#---------------------------------------------------------------------------------
+# Nextendo .nro — libnx + FreeType + mpg123 (BGM) + romfs. Base : switchbrew/switch-examples.
 .SUFFIXES:
 
 ifeq ($(strip $(DEVKITPRO)),)
@@ -11,7 +8,6 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITPRO)/libnx/switch_rules
 
-#---------------------------------------------------------------------------------
 TARGET   := nextendo
 BUILD    := build2
 SOURCES  := source
@@ -21,16 +17,11 @@ ROMFS    := romfs
 
 APP_TITLE   := Prelude
 APP_AUTHOR  := Nextendo Network
-# Règle de version : X.Y.N où N = NEXTENDO_BUILD (source/nextendo_update.h).
-# La version AFFICHÉE dans hbmenu (NACP), le build interne (auto-MAJ) et le tag GitHub
-# doivent TOUJOURS être alignés. Build 20 -> 2.0.1 -> release v2.0.1.
+# X.Y.N ou N = NEXTENDO_BUILD (source/nextendo_update.h) : NACP, build interne et tag GitHub restent alignes.
 APP_VERSION := 3.3.9
-# L'icone d'un NRO doit etre un JPEG 256x256 : hbmenu la decode avec libjpeg-turbo
-# (assetsLoadJpgFromMemory) et libnx livre lui-meme un default_icon.jpg. Un PNG se
-# compile sans broncher puis donne une tuile vide dans le menu homebrew.
+# Doit etre un JPEG 256x256 : hbmenu ne decode pas le PNG et affiche une tuile vide.
 APP_ICON    := icon.jpg
 
-#---------------------------------------------------------------------------------
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 
 CFLAGS := -g -Wall -Wextra -O2 -ffunction-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 $(ARCH) $(DEFINES)
@@ -42,22 +33,13 @@ CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS := -g $(ARCH)
 LDFLAGS  = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-#---------------------------------------------------------------------------------
-# Link : SDL2_mixer (+ codecs MP3/ogg/flac/opus/modplug) AVANT SDL2, puis FreeType,
-# puis SDL2 + deps plateforme via sdl2-config (donne -lSDL2 -lEGL -lglapi
-# -ldrm_nouveau -lnx -lm). Ordre statique : dependents d'abord.
-#---------------------------------------------------------------------------------
-# Link via pkg-config (.pc des portlibs) : liste EXACTE des codecs de SDL2_mixer
-# + deps FreeType, dans le bon ordre. Evite de deviner les noms de libs.
+# Link via pkg-config (.pc des portlibs) : noms et ordre exacts des libs, dependents d'abord.
 PKGCONF := PKG_CONFIG_PATH=$(PORTLIBS)/lib/pkgconfig pkg-config
 LIBS := $(shell $(PKGCONF) --static --libs libmpg123 freetype2 2>/dev/null) -lnx
 
-#---------------------------------------------------------------------------------
 LIBDIRS := $(PORTLIBS) $(LIBNX)
 
-#---------------------------------------------------------------------------------
 ifneq ($(BUILD),$(notdir $(CURDIR)))
-#---------------------------------------------------------------------------------
 
 export OUTPUT := $(CURDIR)/$(TARGET)
 export TOPDIR := $(CURDIR)
@@ -132,7 +114,6 @@ clean:
 	@echo clean ...
 	@rm -fr $(BUILD) $(TARGET).nro $(TARGET).nacp $(TARGET).elf
 
-#---------------------------------------------------------------------------------
 else
 .PHONY: all
 
@@ -156,6 +137,4 @@ $(OFILES_SRC) : $(HFILES_BIN)
 
 -include $(DEPENDS)
 
-#---------------------------------------------------------------------------------
 endif
-#---------------------------------------------------------------------------------

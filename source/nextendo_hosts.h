@@ -13,39 +13,19 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// ============================================================
-//  Nextendo Network — contenu du fichier hosts Atmosphere DNS-MITM
-//  Mode NEXTENDO : redirige la plupart des domaines Nintendo -> nos serveurs,
-//  bloque la telemetrie. Exceptions : d4c (MAJ systeme), ctest (browser conntest)
-//  et *.nintendowifi.net resolvent vers le vrai Nintendo pour eviter popups.
-//  Ecrit par l'app dans /atmosphere/hosts/sysmmc.txt ET /atmosphere/hosts/emummc.txt.
-//
-//  Regle Atmosphere : la DERNIERE ligne qui matche gagne.
-//    '*' = 0+ caracteres   '%' = lp1
-//  Les wildcards *.nintendo.* couvrent deja TOUS les hotes compte/jeu decouverts
-//  (accounts, m-lp1.baas, capi.lp1.op2, dragons, scsi, god.penne, e0d67c509...baas).
-// ============================================================
-//  nncs2 NOTE : Pia exige DEUX IP DISTINCTES pour nncs1/nncs2, sinon il dedup et n'envoie
-//  jamais la 2e sonde -> le NAT ne se termine pas -> MK8/S2 tombent en 2618-201. L'ancienne
-//  box distincte est morte (ne repond plus) ; le VPS OVH la remplace et fait tourner le meme
-//  responder nncs2 (UDP 10025 + 10125) avec NNCS_SERVER_IP regle sur sa propre IP. Doit
-//  rester aligne avec DnsMitmResolver.cs cote emulateur, qui redirige nncs2 vers la meme IP.
-//
-//  ATTENTION : tout ce qui est DANS le litteral ci-dessous est ecrit tel quel sur la carte SD
-//  de l'utilisateur, commentaires '#' compris. Les explications vont ici, pas la-dedans.
+// Contenu des hosts Atmosphere DNS-MITM (sysmmc.txt + emummc.txt), genere par l'app.
+// Regle Atmosphere : la DERNIERE ligne qui matche gagne ('*' = 0+ caracteres, '%' = lp1).
+// nncs1/nncs2 doivent porter DEUX IP DISTINCTES, sinon Pia dedup la 2e sonde -> NAT incomplet -> 2618-201.
+// ATTENTION : le litteral ci-dessous part tel quel sur la carte SD, commentaires '#' compris.
 #ifndef NEXTENDO_HOSTS_H
 #define NEXTENDO_HOSTS_H
 
 #include "nextendo_config.h"
 
-// Génère le contenu du fichier hosts dns.mitm avec l'IP donnée.
-// Le buffer retourné est alloué dynamiquement — l'appelant doit le free().
+// Buffer alloué dynamiquement — l'appelant doit le free().
 char *nextendo_hosts_build(const char *ip);
 
-// Chemins cibles sur la carte SD.
-// Signature des fichiers hosts que NOUS generons. Doit rester identique au texte emis
-// par nextendo_hosts_build() : c'est ce qui permet de reconnaitre nos propres fichiers
-// sans dependre de l'IP du moment.
+// Signature de NOS hosts : reconnait nos fichiers sans dependre de l'IP du moment.
 #define NEXTENDO_HOSTS_HEADER_MARK "NEXTENDO NETWORK - Atmosphere DNS-MITM"
 
 #define NEXTENDO_HOSTS_SYSMMC "sdmc:/atmosphere/hosts/sysmmc.txt"

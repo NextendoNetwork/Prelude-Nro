@@ -13,19 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// ============================================================
-//  Nextendo .nro — installation du planning Splatoon 2 via LayeredFS.
-//
-//  Le planning (schedule) est TELECHARGE depuis l'API du compte :
-//      GET https://nextendo.network/api/bcat/<titleId>
-//  qui streame bcat_store/<titleId>.zip (coopdata/ vsdata/ fesdata/ a la racine).
-//  Les entrees du zip sont extraites dans le dossier LayeredFS d'Atmosphere :
-//      sdmc:/atmosphere/contents/<titleId>/romfs/DebugUnderPilot/bcat/
-//  pour les regions USA (01003BC0000A0000) et EUR (0100F8F0000A2000).
-//  System/GameConfigSetting.xml (config STATIQUE du jeu, absente du zip) et le
-//  dossier dummy/ restent copies depuis la romfs du .nro. JPN a le meme pattern
-//  d'URL (/api/bcat/01003c700009c800) mais n'a pas de config System embarque.
-// ============================================================
+// Planning Splatoon 2 : GET /api/bcat/<titleId> -> zip extrait dans le LayeredFS d'Atmosphere (USA + EUR).
 #ifndef NEXTENDO_BCAT_H
 #define NEXTENDO_BCAT_H
 #include <switch.h>
@@ -42,7 +30,6 @@ typedef enum {
     NB_WRITE_FAIL        // ecriture fichier sur la SD echouee
 } nextendo_bcat_result;
 
-// Installe le planning S2 dans le dossier LayeredFS d'Atmosphere.
 // socketInitializeDefault() + sslInitialize() doivent etre actifs avant l'appel.
 nextendo_bcat_result nextendo_bcat_install_s2(void);
 

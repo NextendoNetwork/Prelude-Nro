@@ -9,11 +9,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// ============================================================
-//  Prelude — internationalisation (EN / ES / PT).
-//  Les chaînes sont indexées par StringID. La langue courante
-//  est persistée dans sdmc:/switch/prelude_lang.txt (1 octet).
-// ============================================================
+// i18n : chaînes indexées par StringID, langue courante persistée dans sdmc:/switch/prelude_lang.txt.
 #ifndef LANG_H
 #define LANG_H
 
@@ -216,13 +212,11 @@ typedef enum {
 
 extern Lang g_lang;
 
-// Initialise la langue (lecture depuis SD si disponible, sinon LANG_EN).
+// Relit la langue depuis la SD, sinon LANG_EN.
 void lang_init(void);
 
-// Sauvegarde la langue choisie sur la SD.
 void lang_save(void);
 
-// Renvoie la chaîne localisée pour un ID donné.
 const char *lang_str(StringID id);
 
 #endif // LANG_H

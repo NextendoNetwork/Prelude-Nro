@@ -13,464 +13,61 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// ============================================================
-//  Nextendo .nro — auto-mise a jour (via le serveur Nextendo).
-//  Au lancement, on interroge /api/nro/latest ; si une version plus recente
-//  existe, on affiche un bandeau. L'utilisateur peut telecharger le nouveau
-//  .nro et remplacer /switch/nextendo.nro (le .nro courant tourne depuis la RAM).
-// ============================================================
+// Auto-mise a jour : /api/nro/latest au lancement, puis remplacement du .nro en cours d'execution.
 #ifndef NEXTENDO_UPDATE_H
 #define NEXTENDO_UPDATE_H
 #include <switch.h>
 
 // Version de CE build. A INCREMENTER a chaque release (le serveur renvoie la derniere).
-// build 4 : mode Nintendo coupe network_mitm (fix eShop 2137-7403) + auto-provisioning
-//           du stack cert-trust complet au 1er passage en mode Nextendo (zero install manuelle).
-// build 5 : release Prelude v1 (rebrand du homebrew Nextendo -> Prelude ; MAJ desormais OBLIGATOIRE).
-// build 6 : fix "impossible d'ecrire sur la carte SD" a la MAJ (rename() qui echoue sur
-//           certaines cartes fatfs -> secours par ecriture directe + mkdir defensif).
-// build 7 : ALIGNEMENT DES VERSIONS. La version NACP affichee dans hbmenu etait restee
-//           "1.0.0" (jamais bumpee) alors que le build interne etait deja 6 -> confusion.
-//           Desormais APP_VERSION (Makefile) = 1.0.N ou N = NEXTENDO_BUILD. Build 7 = 1.0.7.
-// build 8 : PRODINFO dynamique par mode (emuMMC). Mode NEXTENDO -> blank_prodinfo_emummc=0
-//           (vrai cert device -> fix du 2123-0011 qui frappait tous les emuMMC incognito ;
-//           confine par DNS-MITM donc l'identite ne fuit jamais = safe). Mode NINTENDO ->
-//           blank_prodinfo_emummc=1 (identite blanche -> anti-ban si online sur le vrai Nintendo
-//           en emuMMC). Le sysNAND (blank_prodinfo_sysmmc) n'est JAMAIS touche.
-// build 9 : (a) FIX NAT : l'IP nncs2 codee en dur (178.105.220.158) pointait sur l'ancienne
-//           machine nncs2, desormais hors service -> Pia n'obtenait jamais la 2e sonde -> NAT
-//           jamais complete -> MK8/S2 tombaient en 2618-201. Remplacee par le VPS OVH
-//           164.132.111.120 qui fait tourner le meme responder. (b) PURGE des fichiers laisses par les anciens builds (network_mitm
-//           4200000000000666, anciens emplacements du bundle CA navigateur, IPS d'un build-id
-//           qui n'est plus cible) : appliquee DANS LES DEUX MODES, donc une console qui a un
-//           vieux Prelude est nettoyee des le 1er lancement. En mode NINTENDO c'est critique :
-//           couper dns_mitm ne suffisait pas, un network_mitm residuel continuait d'intercepter
-//           ssl/ssl:s.
-// build 10 : AUDIT DE SECURITE, mesure sur une vraie console. Quatre trous, tous constates :
-//           (a) TELEMETRIE. Le mode Nintendo posait enable_dns_mitm=0 + add_defaults=0, soit les
-//               deux opt-out du blocage de telemetrie natif d'Atmosphere ("By default, atmosphere
-//               redirects resolution requests for official telemetry servers") : la console etait
-//               MOINS protegee qu'une install d'origine, alors que c'est justement le mode ou elle
-//               parle aux vrais serveurs. Desormais dns_mitm reste ACTIF avec add_defaults=1 ; nos
-//               hosts etant supprimes, DNS.mitm retombe sur default.txt et bloque la telemetrie,
-//               l'eShop continuant de marcher. Secours dns_mitm=0 si nos hosts resistent.
-//           (b) CERT-TRUST. Les patches disable_ca_verification, la CA Nextendo injectee dans le
-//               navigateur et rootCA.pem survivaient a la bascule -> en mode Nintendo la verif des
-//               certificats restait desactivee et notre CA de confiance, face au VRAI Nintendo.
-//               Le mode Nintendo les retire maintenant (removeTreeRomfs, miroir de l'install).
-//           (c) FUITE D'IP. dns_mitm_debug.log gardait notre IP a chaque requete (608 Ko / 7507
-//               lignes sur la carte de test), dns_mitm_startup.log la table complete des
-//               redirections, et les .txt.bak les hosts en clair — alors que le .bak n'etait
-//               JAMAIS relu. Tout est purge dans les deux modes.
-//           (d) PRODINFO. blank_prodinfo_emummc est sans effet sur une console sans emuMMC (CFW
-//               sur la memoire interne) : aucune protection n'y est possible sans casser l'eShop,
-//               raison d'etre du mode Nintendo. On ne peut pas corriger, donc on previent :
-//               l'ecran de confirmation le dit franchement (splGetConfig ExosphereEmummcType).
-// build 11 : build de DIAGNOSTIC. Le build 10 gelait la console au moment de basculer en mode
-//           NINTENDO : l'ecran s'affichait, A ne repondait plus, et la carte restait pourtant
-//           intacte (donc apply_nintendo n'a rien commit). Impossible a reproduire (Ryujinx ne
-//           lit pas les .nro), donc on fait parler la console : nextendo_trace() ecrit chaque
-//           etape dans sdmc:/prelude_trace.txt et COMMIT a chaque ligne — sans ce commit les
-//           ecritures restent en cache et un arret force les perd, ce qui est exactement ce qui
-//           rendait le blocage invisible. La derniere ligne du fichier = la derniere etape
-//           franchie. Suspect principal : le build 10 a introduit le PREMIER appel a
-//           splInitialize() de l'appli (nextendo_detect_boot existait mais n'avait jamais ete
-//           appele) ; si spl casse la session sm en mode applet, l'entree meurt et tout colle.
-// build 12 : RELEASE de l'audit (= build 10 verifie sur console + trace conservee). Le build 11
-//           a prouve sur la vraie console que les 4 correctifs passent de bout en bout :
-//           detect_boot=SYSMMC, hosts supprimes, purges ok, "apply_nintendo: TERMINE". Constate
-//           apres bascule : plus un seul patch IPS, plus de CA Nextendo, plus de rootCA.pem, plus
-//           aucun log DNS-MITM ni .bak -> l'IP du VPS n'est plus nulle part sur la carte, sauf
-//           dans ce .nro (inevitable : c'est lui qui ecrit les hosts).
-//           La trace est GARDEE : le gel du build 10 n'a jamais ete explique (le suspect spl a ete
-//           innocente par la trace elle-meme), donc si un joueur le revit, prelude_trace.txt est
-//           notre seul temoin. Elle repart de zero a chaque lancement.
-// build 13 : ECRAN DE REVUE AVANT APPLICATION (revertido en build 14). Mostraba los cambios
-//           de config antes de aplicar. Causaba confusión y se revirtió al confirm estático.
-// build 14 : REVERT del config review screen. Vuelve al ui_draw_confirm original.
-//           Agregado GitHub Actions workflow para builds automáticos.
-// v2.0.1 : Major bump + fix build 20. Hosts actualizados con redirecciones a VPS para penne_ids, dauth, srv.nintendo.net.
-// Anterior v2.0.0 tenia NEXTENDO_BUILD 0, lo que provocaba falso "Mise à jour OBLIGATOIRE" (server v12 > build 0).
-// v2.0.3 : Fix phantom update popup. Remove *.nintendo.net wildcard to let d4c resolve to real Nintendo.
-//          En 22.5.0 el SSL del VPS no es confiable (disable_ca_verification no cubre 22.5.0),
-//          nim no recibe meta de actualizacion -> popup fantasma. Al resolver d4c al Nintendo real,
-//          22.5.0 se ve como "ultima version" -> sin popup.
-// build 24 : Fix browser conntest (remove *.nintendowifi.net). Better BCAT error diagnostics with
-//            specific network error codes (connect/timeout/HTTP). Added PIA + BCAT connectivity
-//            tests to network diagnostics.
-// build 25 : Auto-create BCAT save data if missing (fix Splatoon 2 schedule without launching S2).
-//            Update confirmation screen (Y -> ask -> A = install, B = cancel) instead of immediate download.
-// build 28 : v2.0.9. Fix input freeze (consoleUpdate(NULL) in main loop).
-// build 29 : v2.1.0. Auto-update via GitHub API (HTTPS) directly, no VPS dependency.
-//            Uses Switch native SSL service for HTTPS. Adds net_https_get/_to_file.
-// build 30 : v2.1.1. Startup update check via HTTP (no SSL) to fix 'Función no disponible'
-//            on login after exiting Prelude (sslInit/sslExit side effect on system SSL service).
-// build 31 : v2.1.2. Fix browser "Función no disponible". Remove api.hac.lp1.ctest.srv.nintendo.net
-//            and wildcards *.srv.nintendo.net / *srv.nintendo.net from DNS-MITM hosts so the
-//            browser conntest (introduced FW 18.0+) resolves to real Nintendo instead of VPS.
-// build 32 : v2.1.3. Fix Splatoon 2 schedule installer. Replace BCAT SaveData mount with
-//            Atmosphere LayeredFS (sdmc:/atmosphere/contents/<title_id>/romfs/DebugUnderPilot/bcat/)
-//            for both USA (01003BC0000A0000) and EUR (0100F8F0000A2000) versions.
-// build 33 : v2.1.4. Set real Nextendo server IP (51.178.29.194) in config replacing placeholder.
-// build 34 : v2.1.5. Splatoon 2 schedule: embed .byaml/.bfres data in NRO romfs instead of
-//            downloading from server (which returned "no available server"). The installer now
-//            copies files from romfs:/bcatdata/ to LayeredFS paths on SD — no network needed.
-// build 35 : v3.0.0. New BCAT schedules (Aug 3 EU, Jun 29 US). Wildcard g2*.s.n.srv.nintendo.net
-//            covers ALL game NEX secure servers (S2, MK8, SSBU, ACNH, Strikers). Fix linking
-//            (extras.self nxAccountBlob, api/token revert). NDAS aauth host + handler.
-// build 36 : v3.0.2. Remove *.op2.nintendo.net wildcard (caused 2219-4001 on ACNH). Add
-//            conntest.nintendowifi.net + ctest.cdn.nintendo.net redirects (fix browser
-//            "This feature is not available"). BCAT from bcat-seed.zip.
-// build 40 : v3.0.6. MK8 secure-server (g2b309e01-lp1) now routes to the production IP
-//           (164.132.111.120) instead of the current server, where Mario Kart has its
-//           players. Kept AFTER the g2* wildcard: "last matching line wins" in Atmosphere.
-// build 41 : v3.0.7. Fix auto-updater: (a) semver comparison was broken — the tag patch
-//           (e.g. 6) was compared against NEXTENDO_BUILD (40), so 6 > 40 was always false
-//           and updates were never detected. Now compares full maj.min.patch against
-//           NEXTENDO_VERSION_*; (b) GitHub API now points to the upstream repo
-//           (NextendoNetwork/Prelude-Nro) instead of the fork, which lagged a release
-//           behind. UI shows the full version (v3.0.7) in banner/confirm/status.
-// build 42 : v3.0.8. Fix BCAT download (always showed "write error"). Root cause: raw
-//           sslConnectionSetSocketDescriptor (IPC) was called directly — libnx docs say
-//           "Do not use directly, use socketSslConnectionSetSocketDescriptor instead".
-//           The raw call failed with 0xe87b (module 123 / description 116) before any
-//           HTTP header was received, returning status=0 which was treated as success,
-//           triggering a fake "write error" from the empty zip. Fixed in both
-//           net_https_get and net_https_get_to_file.
-// build 43 : v3.0.9. BCAT: download EUR zip once (0100F8F0000A2000) and install it to
-//           all regions (USA + EUR). Avoids a second HTTPS round-trip and ensures both
-//           regions always get the same schedule data regardless of per-region API state.
-// build 44 : v3.1.0. Fix auto-updater never detecting updates. Root cause: the GitHub
-//           API returns pretty-printed JSON ("tag_name": "vX.Y.Z" with a space after
-//           the colon), but parse_github_json searched for "tag_name":"" (no space) —
-//           strstr never matched, parse returned false, update was always skipped.
-//           Replaced hardcoded key+quote strings with json_str_value() which tolerates
-//           optional whitespace around ':'. Same fix for browser_download_url.
-// build 45 : v3.2.0. MK8D country flag installer. New button alongside BCAT in the
-//           picker (FOCUS_FLAG). Opens a scrollable menu of 110 countries sourced
-//           from alyeri/nextendo-mk8d-country-flags. Downloads the IPS ExeFS patch
-//           (title 0100152000022000, build ID FE941ED5BA14BE5D505698DA1BBF4FE7) from
-//           GitHub raw and installs it at:
-//               sdmc:/atmosphere/exefs_patches/Nextendo Country XX/
-//           Removes any previously installed flag before writing the new one. Shows
-//           the installed country code in the flag bar while in the picker.
-// build 46 : v3.2.2. SSBU online-deluxe quickplay mod bundled in NRO romfs.
-//           Automatically installed when switching to Nextendo mode and removed when
-//           switching back to Nintendo mode. Mod files bundled at romfs:/ssbu_quickplay/
-//           and mirrored to sdmc:/atmosphere/contents/ via copyTreeRomfs / removeTreeRomfs.
-//           Title 01006A800016E000 (SSBU) + sysmodule 00FF0000A11CE0FF (online-deluxe v1.3.0).
-//           Full dependency stack: arcropolis, nro-hook, smashline, imgui-smash, ssbu-pia-manager.
-// build 47 : v3.2.3. Luigi's Mansion 3 online support. Add explicit DNS-MITM host for
-//           LM3 NEX game server (g20de2100-lp1.s.n.srv.nintendo.net -> VPS).
-//           Already caught by the g2* wildcard but added explicitly for reliability,
-//           consistent with SSBU / ACNH / Strikers entries.
-// build 48 : v3.2.4. Fix auto-updater download "fallo de red". Root cause: GitHub
-//           releases URLs redirect (HTTP 302) to a CDN (objects.githubusercontent.com)
-//           with a presigned URL. net_https_get_to_file did not follow redirects,
-//           causing NUP_NET_FAIL on every download attempt. Fixed by following one
-//           redirect: on 3xx response, Location header is extracted, file is truncated,
-//           and a second HTTPS connection is made to the CDN host.
-// build 49 : v3.2.5. SSBU mod now optional. Removed auto-install on Nextendo mode switch.
-//           New SSBU mod menu (L button on picker): shows install status, A to install
-//           or uninstall SSBU Online Deluxe quickplay mod. Removal on Nintendo mode
-//           switch is kept for cleanup. Detection via sentinel file on SD card.
-// build 50 : v3.2.6. Toggle for the SSBU mod's OWN overclock (X button on the SSBU
-//           screen). The mod bundles its own overclocker — the libnx_over.nro skyline
-//           plugin plus sysmodule 00FF0000A11CE0FF, loaded at boot by flags/boot2.flag.
-//           When the player already runs Horizon OC / sys-clk, both drive the same PCV
-//           clock rails and the console FREEZES on launching Smash or seconds later
-//           (tell-tale sign: renaming the Horizon OC folder makes the mod work).
-//           Disabling writes sdmc:/ultimate/ssbu_online_deluxe/config.toml with
-//           overclocker = false, then deletes the plugin and the sysmodule — procedure
-//           confirmed by saad-script (mod author). Reversible offline: re-enabling
-//           copies both back from the NRO romfs, no download needed.
-//           State is read from flags/boot2.flag (what actually makes Atmosphere load
-//           the sysmodule), never from config.toml, which the player may have hand-edited.
-//           The option is hidden and inert unless the mod is installed: without it,
-//           restoring 00FF0000A11CE0FF would leave an ORPHAN overclocker active at boot.
-// build 51 : v3.2.7. Honest wording for NINTENDO mode (reported by deejay87). The mode
-//           sets blank_prodinfo_emummc=1, so on an emuMMC console the device identity is
-//           blanked and online services cannot authenticate — no eShop, no online play.
-//           The UI nevertheless promised "normal console operation" / "back to official
-//           Nintendo servers", which never happened for those users. The picker line is
-//           now factual for both console types, and the confirm screen picks its wording
-//           from warnNoEmummc: sysNAND keeps the old text (blank_prodinfo has no effect
-//           there, so the return really is complete, and the existing risk warning still
-//           shows below it), emuMMC gets a new string stating online will not work.
-//           Also fixes a misleading comment in nextendo_apply.c: Atmosphere's default
-//           telemetry entries are COMPILED INTO the DNS.mitm sysmodule, not read from a
-//           default.txt it creates. add_defaults_to_dns_hosts=1 merges them, so blocking
-//           holds from boot even with an empty /atmosphere/hosts/. Documents why we must
-//           NOT write our own default.txt: it belongs to the user, would outlive Prelude,
-//           and our copy of the list would drift behind Atmosphere's.
-// build 52 : v3.3.0. Three changes: the UI adopts the console's own look, the .nro
-//           loses a third of its size, and Splatoon 3 becomes reachable.
-//
-//           (0) UI RETHEMED. The palette now follows the system (HOME menu / Settings)
-//           instead of a bespoke identity, and it tracks the console's light/dark
-//           setting — so the colours became theme_* accessors rather than compile-time
-//           constants, since a constant cannot change at runtime. The two brand colours
-//           (Nextendo blue, Nintendo red) are deliberately left alone: they are the
-//           project's identity and they hold on either background. Rationale: Prelude
-//           IS a settings app, so it should use the conventions its users already know.
-//
-//           (a) AUDIO REWRITTEN, SDL2 DROPPED. Background music moves from SDL2_mixer
-//           to mpg123 + audout directly. The old link line, `pkg-config --static
-//           --libs SDL2_mixer`, pulled in libSDL2 (4.4 MB) and with it Mesa —
-//           libEGL (5.1 MB) plus libglapi — because SDL2 declares a video subsystem,
-//           plus libmodplug (0.9 MB) for a tracker format we never use. Prelude draws
-//           straight to the framebuffer and has never issued an OpenGL call: all of
-//           that existed only to decode one MP3, and mpg123 (0.24 MB) is the only
-//           part that was doing the work.
-//           The easter egg went too (audio.mp3 + 671 JPEG frames, 2.6 MB).
-//           Measured: .nro 25.97 MB -> 17.01 MB, code section 8.47 MB -> 2.13 MB
-//           (-75 %), romfs 17.50 MB -> 14.88 MB.
-//           This matters beyond disk: hbloader loads the whole .nro into RAM, and in
-//           applet mode that headroom is what the updater needs to buffer a download.
-//
-//           (b) SPLATOON 3 / NPLN HOSTS. Splatoon 3 does NOT use NEX — it speaks
-//           NPLN (gRPC over HTTP/2), so it has no g2*.s.n secure server and none of the
-//           existing per-game entries reach it. Hosts taken from the traefik HostSNI
-//           rules on the live npln container, not guessed:
-//             t-dce9377b-lp1.lp1.t.npln.srv.nintendo.net
-//             t-adf89f68-lp1.lp1.t.npln.srv.nintendo.net
-//             gw.hac.lp1.vermillion.srv.nintendo.net
-//             val.hac.lp1.penne.srv.nintendo.net
-//             fro-3.hac.lp1.penne.srv.nintendo.net
-//             dragons.hac.lp1.dragons.nintendo.net
-//           The first five end in srv.nintendo.net and were already caught by the
-//           *srv wildcard; they are listed explicitly for the same reason as the NEX
-//           games (mid-label * is ignored on some Atmosphere builds).
-//           dragons is the one that was genuinely UNREACHABLE: it ends in .nintendo.net,
-//           not srv.nintendo.net, and there is no generic *.nintendo.net (that was
-//           removed in v3.0.2 because it was too broad). Without this line it resolved
-//           to the real Nintendo.
-//           Note: an existing entry has val.hac.penne.srv.nintendo.net without the lp1
-//           label; the live route is val.hac.lp1.penne.srv.nintendo.net. Both are kept.
-// build 53 : v3.3.1. Splatoon 3 : le PATCH CERTIFICAT, sans lequel rien ne marche.
-//           v3.3.0 annoncait le support Splatoon 3 en n'ajoutant que des hosts. Ca ne
-//           pouvait pas suffire : le client NPLN de Splatoon 3 lie STATIQUEMENT son
-//           propre BoringSSL et pilote TLS lui-meme sur des sockets Bsd bruts. Il ne
-//           passe JAMAIS par le service ssl: de la console — ni sur hardware reel, ni
-//           en emulation. Donc disable_ca_verification, qui patche le module SSL du
-//           systeme, n'est jamais consulte par ce jeu : quoi que dise le DNS, le jeu
-//           valide notre certificat contre son propre jeu epingle, dans sa propre pile
-//           TLS, et coupe des le ClientHello.
-//           Le contournement doit donc atterrir dans le NSO du jeu. On embarque les
-//           deux patches IPS32 de Kazu dans exefs_patches (deja deployes par
-//           copyTreeRomfs, et retires au retour en mode Nintendo comme le reste) :
-//             s3certbypass  19 o, 1 record  -> MOV W10,#0 a 0x157B20 (check cert)
-//             s3peername    29 o, 2 records -> NOP a 0x14E1B0 + MOV W20,WZR a 0x14DD80
-//           Build ids : 6830B3A1... = 11.2.0, 726D2B88... = 11.0.0. Le certbypass est
-//           BYTE-IDENTIQUE pour les deux (le code n'a pas bouge entre les versions,
-//           seul le nom de fichier change) ; s3peername n'existe que pour 11.2.0.
-//
-//           /!\ VERSION-SPECIFIQUE, et le mode d'echec est silencieux. Atmosphere
-//           matche sur le build id du NOM DE FICHIER : une MAJ du jeu produit un
-//           nouveau build id et le patch est simplement IGNORE — pas d'erreur, pas de
-//           log, juste l'ecran de chargement. C'est deja arrive : un patch construit
-//           sur un dump 11.0.0 dormait sur une console 11.2.0 pendant qu'on accusait
-//           le handshake TLS. Les offsets INTERNES sont un risque separe du nom : ils
-//           n'ont pas bouge entre 11.0.0 et 11.2.0, rien ne garantit que ca tienne a
-//           la prochaine MAJ. Attendu en cas de MAJ Splatoon 3 : les patches cessent
-//           de s'appliquer, tout le monde reste sur l'ecran de chargement, et il faut
-//           un nouveau dump pour les reconstruire.
-//
-//           Cote hosts on ajoute quand meme gamesync.npln.nintendo.net (+ le wildcard
-//           *.npln.nintendo.net) : il finit par npln.nintendo.net et non par
-//           srv.nintendo.net, donc le wildcard *srv ne le prend pas. MAIS ce n'etait
-//           PAS le bloqueur : d'apres Kazu le client ne resout pas ce nom, le serveur
-//           lui donne une adresse et un port explicites dans le document de session et
-//           le token ; le hostname ne sert qu'a l'authority et au SNI. On le garde par
-//           completude, pas comme correctif.
-//           (ancienne entree de ce build, conservee pour l'historique :)
-//           HOTFIX Splatoon 3 : le lobby ne se connectait jamais.
-//           v3.3.0 a ajoute le tenant (t-*.lp1.t.npln.srv...) mais pas le SESSION
-//           HOST, qui est un service separe portant le lobby lui-meme : stream
-//           bidirectionnel KeepUserSession sur TCP/7575, :authority =
-//           gamesync.npln.nintendo.net.
-//           Pourquoi il avait ete manque : les autres hotes NPLN ont ete tires des
-//           regles HostSNI de traefik, or gamesync n'y figure pas — c'est un port TCP
-//           direct de l'hote (nplns3-gamesync ecoute sur 7575), pas un service derriere
-//           le proxy. Et comme dragons, il finit par npln.nintendo.net et non par
-//           srv.nintendo.net, donc le wildcard *srv ne le rattrapait pas non plus.
-//           Resultat cote joueur : le tenant repondait (comptes, amis, horaires) mais
-//           aucune partie ne demarrait. On ajoute *.npln.nintendo.net + l'hote explicite.
-// build 54 : v3.3.2. TELEMETRIE : le mode NEXTENDO ne fusionnait pas les entrees
-//           par defaut d'Atmosphere. On appelait iniSetDnsMitm(true, FALSE) — le
-//           second argument est add_defaults_to_dns_hosts — donc la table native
-//           d'Atmosphere etait desactivee et le seul blocage etait nos deux lignes
-//           receive-%.dg/er. Sur le mode ou les gens jouent, precisement.
-//           Le mode NINTENDO fait (true, true) depuis le build 10, avec un commentaire
-//           expliquant pourquoi : ne pas maintenir notre propre liste, laisser celle
-//           d'Atmosphere qui est suivie en amont et ne derivera pas. Ce raisonnement
-//           n'avait jamais ete reporte dans apply_nextendo. Corrige.
-//           Signale publiquement par TherealJaw, qui avait raison. Verifie avant de
-//           corriger : les defauts d'Atmosphere ne couvrent que les serveurs de
-//           telemetrie (receive-%), jamais accounts.nintendo.com ni les hotes de jeu,
-//           donc aucun risque qu'ils ecrasent nos redirections. Le seul recouvrement
-//           est receive-%, ou les deux valeurs bloquent (0.0.0.0 / 127.0.0.1).
-// build 55 : v3.3.3. Deux corrections, dont une signalee par presque tous les utilisateurs.
-//           AUTO-UPDATER : il ecrivait TOUJOURS dans sdmc:/switch/nextendo.nro, un chemin
-//           fixe, sans regarder d'ou le .nro tournait. Pour quiconque gardait Prelude
-//           ailleurs (autre nom, sous-dossier, racine de la carte), la mise a jour
-//           deposait donc un fichier EN PLUS : celui qu'il relancait restait l'ancien.
-//           Les DEUX rapports recus n'en faisaient qu'un seul — « l'updater ne marche
-//           pas » (on relance l'ancienne version) et « il devrait remplacer Prelude »
-//           (les deux versions sont conservees). Le seul utilisateur pour qui ca
-//           fonctionnait etait celui dont le chemin coincidait avec la constante : ce
-//           n'est pas son dossier qui a aide, c'est la coincidence.
-//           hbmenu passe le chemin REEL du .nro dans argv[0], et main() le jetait
-//           (parametre inutilise). On s'en sert : l'updater remplace desormais le fichier
-//           LANCE, et le .new est ecrit a cote de la cible pour que rename() ne traverse
-//           rien. Repli sur l'ancien chemin si argv est inexploitable — mieux vaut le
-//           comportement historique qu'une ecriture a un endroit invente.
-//           Le duplicat orphelin laisse a l'ancien emplacement par les versions
-//           precedentes est supprime apres une mise a jour reussie, et lui seul.
-//           ATTENTION : ce correctif ne profite a personne avant d'etre installe A LA
-//           MAIN. Une version cassee mettra encore a jour a cote ; c'est a partir de la
-//           3.3.3 que l'updater se remplace lui-meme.
-//
-//           SAUVEGARDE DES HOSTS UTILISATEUR : le mode NINTENDO supprime atmosphere/
-//           hosts/{sysmmc,emummc}.txt. Qui arrivait avec ses PROPRES redirections (un
-//           autre serveur communautaire, ses propres blocages) les perdait des le premier
-//           passage par Prelude, sans le moindre avertissement. Au tout premier
-//           lancement, UNE SEULE FOIS, deux questions : copier les hosts existants vers
-//           switch/prelude_hosts_backup, puis les remettre ou non au retour en mode
-//           NINTENDO. La seconde question ne se pose que si la copie a donne quelque
-//           chose. On ne sauvegarde JAMAIS un fichier que NOUS avons ecrit : d'abord
-//           parce que garder notre IP sur la carte est exactement ce que
-//           nextendo_purge_leaks() existe pour empecher, ensuite parce que le remettre en
-//           mode NINTENDO ferait parler toute la console a nos serveurs alors qu'elle est
-//           censee etre revenue chez Nintendo. La reconnaissance se fait sur l'EN-TETE que
-//           nous ecrivons, pas seulement sur les deux IP courantes : un hosts pose par une
-//           version tres ancienne, ou par une installation manuelle vers une autre adresse,
-//           passerait un filtre base sur les IP et serait restaure vers un serveur mort.
-// build 56 : v3.3.4. Correctif du build 55, publie tout de suite apres lui parce qu'il
-//           ne peut pas se reparer tout seul chez ceux qui ont deja lance le 55.
-//           Le garde-fou qui empeche de sauvegarder un hosts ecrit par NOUS ne
-//           s'appliquait qu'a la CREATION de la copie, et il ne reconnaissait nos
-//           fichiers qu'a leurs deux IP courantes. Un hosts pose par un Prelude tres
-//           ancien (autre IP, en-tete non testee a l'epoque) passait donc le filtre : il
-//           etait copie, puis remis a CHAQUE passage en mode NINTENDO, et la console
-//           parlait a un serveur mort. Sans issue pour l'utilisateur, en plus : la
-//           question ne se pose qu'une fois et sa reponse est deja enregistree.
-//           Deux verrous ajoutes. On reconnait nos fichiers a l'EN-TETE ecrite par
-//           nextendo_hosts_build, quelle que soit l'IP qu'ils portaient. Et on revalide
-//           la sauvegarde AVANT de la remettre, pas seulement avant de la creer : c'est
-//           ce qui repare les installations ou la mauvaise copie existe deja, sans rien
-//           demander a personne. Une copie invalide n'est simplement jamais restauree.
-//           Rien d'autre ne change par rapport au 55.
-// build 57 : v3.3.5. L'updater du 55/56 pouvait echouer sur « impossible d'ecrire sur
-//           la SD » (rapporte par Andrei, depuis la 3.3.3). Le 55 a fait passer la cible
-//           de « un chemin fixe » a « le fichier qu'on execute ». Le code disait que
-//           l'ecrasement etait sans risque parce qu'on tourne depuis la RAM : c'etait
-//           gratuit tant que le fichier remplace n'etait PAS celui qu'on executait, et ca
-//           a cesse de l'etre precisement avec ce changement. Selon le chargeur, le .nro
-//           en cours peut rester ouvert — remove() echoue, rename() ne peut pas ecraser
-//           sur FAT32, l'ouverture en ecriture est refusee, et l'utilisateur se retrouve
-//           avec une erreur alors que la mise a jour est deja telechargee.
-//           Trois tentatives au lieu d'une : ecrasement EN PLACE sans supprimer d'abord
-//           (passe si le fichier resiste a la suppression mais pas a l'ecriture), puis
-//           remove+rename, puis en dernier recours l'ancien emplacement fixe. Ce dernier
-//           recours recree le doublon que le 55 corrigeait : c'est assume, une mise a
-//           jour installee ailleurs vaut mieux qu'une mise a jour perdue.
-//           L'updater ecrit desormais dans prelude_trace.txt ce qu'il a fait (60 a 64) :
-//           il n'avait AUCUNE trace, et ce diagnostic-ci a du etre deduit au lieu d'etre
-//           lu. La prochaine fois, le fichier de l'utilisateur repondra tout seul.
-// build 58 : v3.3.6. Splatoon 3 sur les versions RECENTES du jeu. Les correctifs de
-//           certificat sont indexes par identifiant de build : quand Nintendo publie une
-//           mise a jour, l'identifiant change, Atmosphere ne trouve plus rien et n'applique
-//           RIEN — en silence. Le joueur voit 2122-2403 au demarrage en ligne sans le
-//           moindre indice. Signale par cakita (Prelude 3.3.2, jeu 11.2.0) et par plusieurs
-//           testeurs le 16 aout ; la 11.3.0 est sortie le 20.
-//           Ce build ajoute l'identifiant 28C4287A (11.2.0 / 11.3.0), fourni par Kazu, pour
-//           s3certbypass ET s3peername. Chaque correctif est livre sous ses DEUX formes de
-//           nom, la courte (40 hex) et la completee a 64 : les deux conventions existent
-//           selon les versions d'Atmosphere, et un nom qui ne correspond pas ne produit
-//           aucun message.
-//           Verifie avant integration : les trois identifiants portent la MEME instruction
-//           au MEME offset (0x00157B20 <- 2a008052, MOV W10, #1), ce qui confirme que la
-//           fonction visee ne bouge pas d'une version a l'autre. s3peername (0x0014E1B0 NOP
-//           + 0x0014DD80 MOV W20, WZR) reste absent pour 726D2B88, sans consequence : le
-//           certificat que nous servons porte le bon CN et les bons SAN, la verification du
-//           nom passe donc d'elle-meme.
-//           Ce que ce build NE resout PAS : la prochaine mise a jour du jeu cassera encore
-//           tout. Le correctif de fond est un parcheur par MOTIF plutot que par identifiant
-//           de build — kinnay publie deja un script qui balaie les motifs d'instructions
-//           dans un NSO et genere l'IPS (NPLN-Protocols/generate_patch.py), ce qui ramene
-//           chaque nouvelle version a quelques minutes en attendant mieux.
-// build 59 : v3.3.7. Deux changements, tous deux nes du meme constat : l'echec des
-//           correctifs Splatoon 3 est MUET, et l'utilisateur n'a aucun moyen de savoir
-//           ou il en est.
-//           1. RAFRAICHISSEMENT AU DEMARRAGE. Les fichiers du romfs n'etaient ecrits sur
-//           la carte QU'A l'application d'un mode. Mettre Prelude a jour remplacait donc
-//           le .nro sans rien changer sur la carte : le joueur gardait les correctifs de
-//           la version precedente et revoyait 2122-2403, convaincu que la mise a jour
-//           n'avait servi a rien. C'est la moitie des signalements du jour. Desormais, si
-//           le mode Nextendo est DEJA actif, la carte est rafraichie au lancement. Le mode
-//           Nintendo n'est pas touche : il retire volontairement la pile de certificats, et
-//           la reposer en douce serait une faille, pas un confort.
-//           2. SECTION SPLATOON 3. Purement informative : combien de correctifs sont sur
-//           la carte contre combien ce .nro en livre, si la redirection DNS est active, ou
-//           vivent les fichiers, et le rappel qu'une mise a jour du jeu exige de nouveaux
-//           correctifs. Elle ne declare qu'une ligne au clavier : la navigation calcule un
-//           modulo sur ce nombre, et un zero y serait une division par zero.
-//           Ce qu'elle ne peut PAS dire, et c'est ecrit a l'ecran : que les fichiers soient
-//           presents ne prouve pas qu'Atmosphere les ait APPLIQUES. Un identifiant de build
-//           inconnu ne recoit rien, en silence. Seul un correctif qui se signale lui-meme
-//           au demarrage repondrait a cela.
-//           3. TROIS HOTES DE JEU MANQUANTS. Mario Tennis Aces (g23932a00), ARMS (g25c08801)
-//           et Splatoon 2 (g2df33d01) ne comptaient que sur le wildcard g2*, alors que les
-//           cinq autres jeux avaient leur ligne explicite — un oubli, pas un choix. Le *
-//           mid-label est ignore sur certains builds d'Atmosphere : la ou c'est le cas, ces
-//           trois jeux ne resolvaient pas, sans erreur qui l'explique. Ids releves sur les
-//           conteneurs en production, pas devines.
-//           4. DRAPEAUX MK8D FABRIQUES LOCALEMENT. Le patch de pays ne contenait pas un
-//           index : il ecrit les DEUX LETTRES du code en ASCII, et les 110 patches du depot
-//           alyeri sont le meme fichier de 103 octets a cinq positions pres. Verifie en
-//           regenerant les 110 a l'octet pres depuis le seul patch JP. Prelude embarque donc
-//           le gabarit et fabrique le patch lui-meme : plus de telechargement HTTPS pour y
-//           placer deux caracteres, donc plus de "fallo de red" sur ce bouton, et ca marche
-//           hors ligne. Effet de bord voulu : n'importe quel code a deux lettres devient
-//           installable, ce qui ferme l'issue #17 (CN / HK / TW, ymzhen) sans rien publier
-//           en amont. RESERVE : le patch fait dire "CN" a la console, il ne cree pas la
-//           texture du drapeau. Les 110 d'origine viennent de la table interne de MK8D,
-//           les trois nouveaux non — a confirmer sur console.
-// build 60 : v3.3.8. RETRAIT de CN / HK / TW, ajoutes quelques heures plus tot en v3.3.7.
-//           alyeri, qui a releve la table des pays DANS le jeu pour produire les 110 patches
-//           d origine, confirme que MK8D ne possede pas ces drapeaux. Le patch faisait bien
-//           dire "CN" a la console — il ne pouvait pas creer l image que le jeu n a pas.
-//           Erreur de raisonnement a retenir : de "je sais fabriquer le patch pour n importe
-//           quel code" j ai conclu "n importe quel pays peut etre ajoute". Les deux ne se
-//           rejoignent que si le jeu a la texture, ce qui n a jamais ete verifie avant
-//           publication. La bonne source etait alyeri, qui avait la reponse depuis le debut.
-//           La fabrication LOCALE du patch (build 59) est CONSERVEE : elle supprime un
-//           aller-retour reseau reel sur les 110 pays qui, eux, existent.
-//           Reponse a l issue #17 : la demande est legitime mais irrealisable par un patch
-//           ExeFS — il faudrait ajouter des textures au jeu, ce qui est un autre travail.
-// build 61 : v3.3.9 (re-publication). L'updater ne pouvait PAS aboutir : romfsInit()
-//           garde un handle FS ouvert sur le .nro en cours (le romfs est lu a la
-//           demande), donc l'updater essayait d'ecraser un fichier que nous tenions
-//           nous-memes ouvert. Les trois tentatives de remplacement echouaient d'affilee
-//           et l'ecran disait « impossible d'ecrire sur la carte SD » avec une mise a
-//           jour pourtant deja telechargee et verifiee. Cause reelle du rapport d'Andrei
-//           depuis 3.3.3 — soit exactement depuis le build 55, qui a fait passer la cible
-//           de « un chemin fixe » a « le fichier qu'on execute ». Avant 55 ca marchait par
-//           accident : on ecrasait un AUTRE fichier que celui qui tournait.
-//           Correction : releaseRomfs() avant la pose, restoreRomfs() apres, et chaque
-//           tentative trace desormais son errno.
-//           Aussi : barre de progression pendant le telechargement et la pose (17 Mo sans
-//           retour visuel se lisaient comme un plantage), ecran « verification de la mise
-//           a jour » affiche SANS attendre une touche (il n'existait que dans la branche
-//           declenchee par un appui, d'ou « il faut bouger le stick pour qu'il se
-//           rafraichisse »), et barre de boutons corrigee quand le verrou de MAJ est actif
-//           — elle annoncait « A : Ouvrir » alors que seul Y repond.
+// build 4  : mode Nintendo coupe network_mitm (fix eShop 2137-7403) + auto-provisioning du stack cert-trust.
+// build 5  : release Prelude v1 (rebrand Nextendo -> Prelude ; MAJ desormais OBLIGATOIRE).
+// build 6  : fix "impossible d'ecrire sur la SD" a la MAJ (rename() echouait sur certaines cartes fatfs).
+// build 7  : alignement des versions — APP_VERSION (Makefile) = X.Y.N ou N = NEXTENDO_BUILD.
+// build 8  : PRODINFO par mode — NEXTENDO blank_prodinfo_emummc=0 (fix 2123-0011), NINTENDO =1. sysNAND jamais touche.
+// build 9  : nncs2 vers le VPS OVH (l'ancienne machine etait morte -> NAT incomplet -> 2618-201) + purge des fichiers des anciens builds.
+// build 10 : audit de securite — telemetrie (dns_mitm reste actif avec add_defaults=1), retrait du cert-trust en mode Nintendo, purge des logs qui fuyaient notre IP, avertissement sans emuMMC.
+// build 11 : build de diagnostic — nextendo_trace() ecrit chaque etape dans prelude_trace.txt avec commit par ligne.
+// build 12 : release de l'audit, verifie sur console. La trace est gardee : le gel du build 10 n'a jamais ete explique.
+// build 13 : ecran de revue avant application (revert au build 14 : il embrouillait plus qu'il n'aidait).
+// build 14 : revert du config review screen + workflow GitHub Actions.
+// v2.0.1   : hosts a jour (penne_ids, dauth, srv.nintendo.net). v2.0.0 avait NEXTENDO_BUILD 0 -> faux "MAJ obligatoire".
+// v2.0.3   : retrait du wildcard *.nintendo.net pour que d4c resolve vers le vrai Nintendo (fix popup fantasme de MAJ).
+// build 24 : fix browser conntest (retrait *.nintendowifi.net) + codes d'erreur reseau distincts pour le BCAT.
+// build 25 : creation auto de la save BCAT + ecran de confirmation avant de telecharger une MAJ.
+// build 28 : v2.0.9. Fix du gel des entrees (consoleUpdate(NULL) dans la boucle principale).
+// build 29 : v2.1.0. Auto-MAJ via l'API GitHub en HTTPS, sans dependre du VPS.
+// build 30 : v2.1.1. Verif de MAJ au lancement en HTTP : sslInit/sslExit cassait le service SSL systeme.
+// build 31 : v2.1.2. Retrait des wildcards *srv.nintendo.net pour que le conntest du navigateur (FW 18.0+) marche.
+// build 32 : v2.1.3. Planning S2 via LayeredFS Atmosphere au lieu du montage BCAT SaveData (USA + EUR).
+// build 33 : v2.1.4. Vraie IP du serveur Nextendo (51.178.29.194) a la place du placeholder.
+// build 34 : v2.1.5. Donnees du planning S2 embarquees dans la romfs du .nro, plus aucun telechargement.
+// build 35 : v3.0.0. Nouveaux plannings + wildcard g2*.s.n.srv.nintendo.net couvrant tous les serveurs NEX.
+// build 36 : v3.0.2. Retrait de *.op2.nintendo.net (causait 2219-4001 sur ACNH) + redirections conntest.
+// build 40 : v3.0.6. MK8 secure-server route vers l'IP de production, place APRES le wildcard g2* (derniere ligne gagnante).
+// build 41 : v3.0.7. Fix updater : comparaison en semver complet (le patch du tag etait compare a NEXTENDO_BUILD) + depot amont.
+// build 42 : v3.0.8. Fix telechargement BCAT : sslConnectionSetSocketDescriptor brut echouait, il faut la version socket* de libnx.
+// build 43 : v3.0.9. BCAT : un seul zip EUR telecharge puis installe sur toutes les regions.
+// build 44 : v3.1.0. Fix updater : le JSON GitHub est indente, "tag_name":"" ne matchait jamais -> json_str_value() tolere les espaces.
+// build 45 : v3.2.0. Installeur de drapeau de pays MK8D (110 pays, menu deroulant).
+// build 46 : v3.2.2. Mod SSBU online-deluxe embarque dans la romfs du .nro.
+// build 47 : v3.2.3. Hote de jeu explicite pour Luigi's Mansion 3 (deja couvert par g2*, ajoute par fiabilite).
+// build 48 : v3.2.4. Fix updater : les URL de release GitHub redirigent (302) vers un CDN, on suit desormais une redirection.
+// build 49 : v3.2.5. Mod SSBU rendu optionnel, avec son propre ecran d'installation.
+// build 50 : v3.2.6. Bascule pour l'overclock du mod SSBU : conflit avec Horizon OC / sys-clk (memes rails PCV) -> gel au lancement de Smash.
+// build 51 : v3.2.7. Formulation honnete du mode NINTENDO : sur emuMMC blank_prodinfo=1 coupe l'authentification, donc ni eShop ni jeu en ligne.
+// build 52 : v3.3.0. UI au look de la console, SDL2 remplace par mpg123 (.nro 25.97 -> 17.01 Mo), et hotes NPLN de Splatoon 3.
+// build 53 : v3.3.1. Splatoon 3 : patches IPS s3certbypass + s3peername. Le jeu lie son propre BoringSSL et ne passe jamais par le service ssl: de la console.
+// build 54 : v3.3.2. Le mode NEXTENDO ne fusionnait pas les entrees de telemetrie par defaut d'Atmosphere (add_defaults etait a false). Signale par TherealJaw.
+// build 55 : v3.3.3. L'updater ecrit desormais dans le .nro LANCE (argv[0]) et non un chemin fixe + sauvegarde des hosts que l'utilisateur avait avant Prelude.
+// build 56 : v3.3.4. On reconnait nos propres hosts a leur EN-TETE, pas a leurs deux IP courantes, et on revalide la sauvegarde avant de la restaurer.
+// build 57 : v3.3.5. Trois tentatives de remplacement du .nro (ecrasement en place, remove+rename, ancien chemin) + trace de l'updater.
+// build 58 : v3.3.6. Splatoon 3 sur 11.2.0 / 11.3.0 : identifiant de build 28C4287A, livre sous ses deux formes de nom (40 et 64 hex).
+// build 59 : v3.3.7. Rafraichissement de la carte au lancement, section Splatoon 3, trois hotes de jeu manquants, drapeaux MK8D fabriques localement.
+// build 60 : v3.3.8. Retrait de CN / HK / TW : MK8D n'a pas ces textures de drapeau, un patch ne peut pas les creer.
+// build 61 : v3.3.9. romfsInit() gardait un handle ouvert sur le .nro en cours -> l'updater ne pouvait jamais le remplacer. releaseRomfs() avant la pose.
 #define NEXTENDO_BUILD 61
 
-// Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
-// Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
-// NEXTENDO_BUILD : les tags GitHub sont des semver (v3.2.5), pas des compteurs.
+// Doit rester alignee avec APP_VERSION (Makefile) : l'updater compare des semver, pas NEXTENDO_BUILD.
 #define NEXTENDO_VERSION_MAJOR 3
 #define NEXTENDO_VERSION_MINOR 3
 #define NEXTENDO_VERSION_PATCH 9
@@ -488,17 +85,12 @@ typedef enum {
     NUP_WRITE_FAIL    // ecriture SD impossible
 } nextendo_update_result;
 
-// Interroge le serveur (rapide, timeout court). socketInitializeDefault géré en interne.
-// Chemin du .nro en cours d'execution (argv[0] de hbmenu). A appeler AVANT toute mise
-// a jour : c'est ce fichier-la qui sera remplace. Sans cet appel, l'updater retombe sur
-// l'emplacement historique sdmc:/switch/nextendo.nro.
+// argv[0] de hbmenu : le fichier qui sera remplace. Sans cet appel, repli sur sdmc:/switch/nextendo.nro.
 void nextendo_update_set_self_path(const char *argv0);
 
 NextendoUpdate nextendo_update_check(void);
 
-// Progression d'une mise a jour. `phase` distingue les deux temps longs : le
-// telechargement (17 Mo) puis la pose du fichier sur la carte, qui n'est pas
-// instantanee non plus. `total` vaut 0 si la taille est inconnue.
+// Les deux temps longs : le telechargement (17 Mo) puis la pose sur la carte. `total` vaut 0 si inconnu.
 typedef enum {
     NUP_PHASE_DOWNLOAD = 0,
     NUP_PHASE_INSTALL  = 1,
@@ -506,9 +98,7 @@ typedef enum {
 
 typedef void (*nextendo_progress_fn)(nextendo_update_phase phase, long done, long total);
 
-// Telecharge le nouveau .nro et remplace celui qu'on execute (via un .new + rename).
-// `onProgress` peut etre NULL ; sinon il est appele assez souvent pour qu'un ecran
-// rafraichi dessus ne paraisse jamais fige.
+// Remplace le .nro en cours via un .new + rename. `onProgress` peut etre NULL.
 nextendo_update_result nextendo_update_apply(long expectedSize, nextendo_progress_fn onProgress);
 
 #endif // NEXTENDO_UPDATE_H

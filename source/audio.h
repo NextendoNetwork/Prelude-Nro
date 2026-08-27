@@ -13,17 +13,11 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// ============================================================
-//  Nextendo .nro — musique de fond (BGM en boucle).
-//  Charge romfs:/bgm.mp3 et la joue en boucle infinie. Non-fatal :
-//  si le fichier est absent ou l'audio indispo, l'app continue en silence.
-// ============================================================
+// BGM en boucle depuis romfs:/bgm.mp3 (mpg123 + audout). Non-fatal : sans fichier ni audio, l'app continue en silence.
 #ifndef AUDIO_H
 #define AUDIO_H
 #include <switch.h>
 
-// BGM en boucle depuis romfs:/bgm.mp3 (mpg123 + audout). Non-fatal : renvoie
-// false si l'audio ou le fichier manque, l'app continue en silence.
 bool audio_init(void);
 void audio_exit(void);   // arrete le thread de decodage, puis libere
 

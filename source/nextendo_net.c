@@ -13,11 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// ============================================================
-//  Nextendo .nro — mini client HTTP(S) (sockets BSD libnx).
-//  Pour HTTP simple : connexion directe au VPS BCAT.
-//  Pour HTTPS : utilise le service SSL natif de la Switch.
-// ============================================================
+// Mini client HTTP(S) sur sockets BSD libnx ; le HTTPS passe par le service SSL natif de la Switch.
 #include <switch.h>
 #include <switch/runtime/devices/socket.h>
 #include <sys/socket.h>
@@ -36,16 +32,10 @@
 
 Result g_net_ssl_rc = 0;
 
-// Taille maximale d'une reponse HTTP en memoire (4 MiB).
-// Au-dela, on considere que le serveur envoie trop de donnees (DoS ou erreur).
+// Plafond d'une reponse gardee en memoire : au-dela, le serveur deraille (DoS ou erreur).
 #define MAX_RESPONSE_SIZE (4 * 1024 * 1024)
 
-// ------------------------------------------------------------------
-//  Utilitaires partages (connexion TCP + timeout).
-// ------------------------------------------------------------------
-
-// Connecte un socket TCP a ip:port avec timeout non-bloquant (6s).
-// Renvoie le fd, ou -1 si echec. Le socket est en mode bloquant au retour.
+// Timeout non-bloquant de 6 s ; le socket revient en mode bloquant. -1 si echec.
 static int tcp_connect(const char *ip, int port) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return -1;
@@ -78,8 +68,7 @@ static int tcp_connect(const char *ip, int port) {
     return fd;
 }
 
-// Envoie une requete HTTP brute sur un fd (socket ou SSL).
-// Retourne 0 si tous les octets envoyes, -1 si erreur.
+// 0 si tous les octets sont partis, -1 sinon.
 static int send_request(int fd, const char *method, const char *path,
                         const char *host, int port) {
     char req[768];
@@ -97,8 +86,7 @@ static int send_request(int fd, const char *method, const char *path,
     return 0;
 }
 
-// Parse le code HTTP depuis le debut d'une reponse (status-line).
-// Renvoie le code (ex: 200) ou NET_ERR_PROTO.
+// Code de la status-line, ou NET_ERR_PROTO.
 static int parse_status(const unsigned char *buf, size_t len) {
     for (size_t i = 0; i + 3 < len && i < 64; i++) {
         if (buf[i] == ' ') {
@@ -110,8 +98,7 @@ static int parse_status(const unsigned char *buf, size_t len) {
     return NET_ERR_PROTO;
 }
 
-// Trouve le debut du corps (apres \r\n\r\n).
-// Renvoie l'offset, ou 0 si pas trouve (met *found=false).
+// Offset du corps (apres \r\n\r\n), ou 0 avec *found=false.
 static size_t find_body(const unsigned char *buf, size_t len, bool *found) {
     *found = false;
     for (size_t i = 0; i + 3 < len; i++) {
@@ -123,10 +110,6 @@ static size_t find_body(const unsigned char *buf, size_t len, bool *found) {
     }
     return 0;
 }
-
-// ------------------------------------------------------------------
-//  HTTP simple (nextendo_net.h - deja existant).
-// ------------------------------------------------------------------
 
 unsigned char *net_http_get(const char *ip, int port, const char *path, size_t *out_len, int *out_status) {
     *out_len = 0;
@@ -173,9 +156,7 @@ unsigned char *net_http_get(const char *ip, int port, const char *path, size_t *
     return body;
 }
 
-// Streame la reponse depuis un fd (socket ou SSL) vers un fichier,
-// parse les en-tetes en cours de route. Retourne le nombre d'octets du corps
-// ecrits, -1 si reseau, -2 si ecriture fichier.
+// Streame vers un fichier en parsant les en-tetes au vol. -1 si reseau, -2 si ecriture.
 typedef ssize_t (*net_recv_fn)(int fd, void *buf, size_t count);
 
 static long stream_to_file(int fd, FILE *out, int *out_status, net_recv_fn recv_fn) {
@@ -229,35 +210,25 @@ long net_http_get_to_file(const char *ip, int port, const char *path, FILE *out,
     return res;
 }
 
-// ------------------------------------------------------------------
-//  HTTPS via le service SSL natif de la Switch.
-//  Utilise switch/services/ssl.h (inclus via <switch.h>).
-// ------------------------------------------------------------------
-
-// Resout un nom d'hote en IP (string). Renvoie le buffer statique ou NULL.
+// Renvoie un buffer STATIQUE, ou NULL.
 static const char *resolve_host(const char *host) {
     struct hostent *he = gethostbyname(host);
     if (!he || !he->h_addr_list[0]) return NULL;
     return inet_ntoa(*(struct in_addr *)he->h_addr_list[0]);
 }
 
-// Effectue une requete HTTPS GET. Retourne le corps (malloc), la longueur
-// et le code HTTP. Necessite socketInitializeDefault() + sslInitialize() avant.
-// L'appelant doit liberer le pointeur retourne avec free().
+// Corps a free() par l'appelant. Necessite socketInitializeDefault() + sslInitialize() avant.
 unsigned char *net_https_get(const char *host, const char *path,
                               size_t *out_len, int *out_status) {
     *out_len = 0;
     *out_status = NET_ERR_UNKNOWN;
 
-    // Resoudre le nom d'hote.
     const char *ip = resolve_host(host);
     if (!ip) { *out_status = NET_ERR_CONNECT; return NULL; }
 
-    // Connexion TCP.
     int fd = tcp_connect(ip, 443);
     if (fd < 0) { *out_status = NET_ERR_CONNECT; return NULL; }
 
-    // Initialiser SSL.
     SslContext sslCtx;
     SslConnection sslConn;
     Result rc = sslCreateContext(&sslCtx, SslVersion_Auto);
@@ -272,21 +243,16 @@ unsigned char *net_https_get(const char *host, const char *path,
     rc = sslConnectionSetHostName(&sslConn, host, strlen(host));
     if (R_FAILED(rc)) { sslConnectionClose(&sslConn); sslContextClose(&sslCtx); if (out_fd >= 0) close(out_fd); *out_status = NET_ERR_CONNECT; return NULL; }
 
-    // La verif de certificat se fait contre le trust store du systeme, qui ne connait pas
-    // les racines recentes (ex: ISRG Root YR de Let's Encrypt, chaine de nextendo.network).
-    // On saute la verification : trafic reste chiffre, c'est notre propre serveur, et le
-    // projet desactive deja la verif CA au niveau systeme (patches Atmosphere pour le VPS).
+    // Verif sautee : le trust store systeme ignore les racines recentes (ISRG Root YR), et c'est notre propre serveur.
     sslConnectionSetOption(&sslConn, SslOptionType_SkipDefaultVerify, true);
 
-    // Force ALPN a http/1.1 : le service SSL de la Switch peut offrir h2, ce qui ferait
-    // negocier HTTP/2 avec le serveur. Le code envoie du HTTP/1.1 brut -> incompatible.
+    // ALPN force a http/1.1 : sans ca le service SSL peut negocier h2, que ce code ne parle pas.
     { static const u8 alpn[] = { 8, 'h','t','t','p','/','1','.','1' };
       sslConnectionSetNextAlpnProto(&sslConn, alpn, sizeof(alpn)); }
 
     rc = sslConnectionDoHandshake(&sslConn, NULL, NULL, NULL, 0);
     if (R_FAILED(rc)) { sslConnectionClose(&sslConn); sslContextClose(&sslCtx); if (out_fd >= 0) close(out_fd); *out_status = NET_ERR_PROTO; return NULL; }
 
-    // Envoyer la requete via SSL.
     char req[768];
     int rl = snprintf(req, sizeof(req),
                       "GET %s HTTP/1.1\r\nHost: %s\r\n"
@@ -301,7 +267,6 @@ unsigned char *net_https_get(const char *host, const char *path,
         *out_status = NET_ERR_CONNECT; return NULL;
     }
 
-    // Lire la reponse.
     size_t cap = 1 << 16, len = 0;
     unsigned char *buf = (unsigned char *)malloc(cap);
     if (!buf) {
@@ -345,7 +310,7 @@ unsigned char *net_https_get(const char *host, const char *path,
     return body;
 }
 
-// Extract Location header value from raw HTTP headers (case-insensitive).
+// Valeur de l'en-tete Location, insensible a la casse.
 static void extract_location(const unsigned char *hdr, size_t hlen, char *out, size_t cap) {
     out[0] = '\0';
     for (size_t i = 0; i + 9 < hlen; i++) {
@@ -367,15 +332,13 @@ static void extract_location(const unsigned char *hdr, size_t hlen, char *out, s
     }
 }
 
-// Version streaming fichier de HTTPS GET. Suit automatiquement un redirect 3xx.
-// Necessite socketInitializeDefault() + sslInitialize() avant.
-// Retourne le nombre d'octets du corps ecrits, -1 si reseau, -2 si ecriture.
+// Streaming fichier, suit un redirect 3xx. -1 si reseau, -2 si ecriture.
 long net_https_get_to_file(const char *host, const char *path,
                             FILE *out, int *out_status,
                             net_progress_fn onProgress) {
     *out_status = 0;
 
-    // cur_host / cur_path may be updated on redirect (CDN presigned URLs can be long)
+    // Reecrits en cas de redirect : une URL presignee de CDN peut etre longue.
     char cur_host[256];
     char cur_path[2048];
     strncpy(cur_host, host,  sizeof(cur_host) - 1); cur_host[sizeof(cur_host)-1] = '\0';
@@ -409,7 +372,7 @@ long net_https_get_to_file(const char *host, const char *path,
         rc = sslConnectionDoHandshake(&sslConn, NULL, NULL, NULL, 0);
         if (R_FAILED(rc)) { g_net_ssl_rc = rc; sslConnectionClose(&sslConn); sslContextClose(&sslCtx); if (out_fd >= 0) close(out_fd); *out_status = NET_ERR_PROTO; return -1; }
 
-        // Request buffer sized for CDN presigned URLs (can reach ~1500 chars total)
+        // Dimensionne pour une URL presignee de CDN (~1500 caracteres).
         char req[2560];
         int rl = snprintf(req, sizeof(req),
                           "GET %s HTTP/1.1\r\nHost: %s\r\n"
@@ -424,7 +387,6 @@ long net_https_get_to_file(const char *host, const char *path,
             *out_status = NET_ERR_PROTO; return -1;
         }
 
-        // Streaming: lire via SSL, ecrire dans le fichier.
         unsigned char rbuf[32768];
         unsigned char hdr[8192];
         size_t hlen = 0;
@@ -441,7 +403,7 @@ long net_https_get_to_file(const char *host, const char *path,
             if (R_FAILED(rc)) { sslError = true; break; }
             if (read == 0) break;
             if (inBody) {
-                // Redirect body is discarded (typically empty or small HTML)
+                // Corps du redirect jete (vide ou petit HTML).
                 if (!is_redirect) {
                     if (fwrite(rbuf, 1, read, out) != read) {
                         sslConnectionClose(&sslConn); sslContextClose(&sslCtx);
@@ -464,7 +426,7 @@ long net_https_get_to_file(const char *host, const char *path,
                 is_redirect = (status >= 300 && status < 400);
                 inBody = 1;
                 if (!is_redirect) {
-                    // Capture Content-Length si present (verif integrite en fin de stream).
+                    // Content-Length : sert a la verif d'integrite en fin de stream.
                     for (size_t j = 0; j + 16 < hlen; j++) {
                         if ((hdr[j]=='C'||hdr[j]=='c') && (hdr[j+1]=='o'||hdr[j+1]=='O')
                          && (hdr[j+2]=='n'||hdr[j+2]=='N') && (hdr[j+3]=='t'||hdr[j+3]=='T')
@@ -490,14 +452,13 @@ long net_https_get_to_file(const char *host, const char *path,
                         }
                         bodyBytes += (long)rem;
                     }
-                    // Premier signalement des l'en-tete lue : la barre part a 0 % avec la
-                    // taille totale connue, au lieu d'apparaitre seulement au 2e paquet.
+                    // Signale des l'en-tete : la barre part a 0 % avec la taille connue, pas au 2e paquet.
                     if (onProgress) onProgress(bodyBytes, contentLen > 0 ? contentLen : 0);
                 }
             }
         }
 
-        // Capture Location before closing the connection
+        // Location doit etre lu avant la fermeture de la connexion.
         char location[2048] = {0};
         if (is_redirect) extract_location(hdr, hlen, location, sizeof(location));
 
@@ -506,7 +467,7 @@ long net_https_get_to_file(const char *host, const char *path,
         if (out_fd >= 0) close(out_fd);
         *out_status = status;
 
-        // Follow one redirect (GitHub releases -> CDN)
+        // Un seul redirect suivi (releases GitHub -> CDN).
         if (is_redirect && attempt == 0 && location[0]) {
             char new_host[256] = {0};
             char new_path[2048] = {0};
@@ -514,16 +475,14 @@ long net_https_get_to_file(const char *host, const char *path,
                 return -1;
             strncpy(cur_host, new_host, sizeof(cur_host) - 1); cur_host[sizeof(cur_host)-1] = '\0';
             strncpy(cur_path, new_path, sizeof(cur_path) - 1); cur_path[sizeof(cur_path)-1] = '\0';
-            // Truncate file: redirect body (HTML) must not prefix the real download
+            // Tronquer : le HTML du redirect ne doit pas prefixer le vrai telechargement.
             rewind(out);
             ftruncate(fileno(out), 0);
             continue;
         }
 
-        // Final integrity check
         if (!inBody) return -1;
-        // Integrite : Content-Length est l'autorite (le serveur ferme apres le body, un
-        // erreur SSL au EOF est alors normal). Sans CL, un erreur SSL a mi-corps = tronque.
+        // Content-Length fait autorite : une erreur SSL a l'EOF est normale, a mi-corps elle signale un fichier tronque.
         if (contentLen >= 0) {
             if (bodyBytes != contentLen) return -1;
         } else if (sslError) {

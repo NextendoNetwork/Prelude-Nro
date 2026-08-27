@@ -13,21 +13,8 @@
 // You should have received a copy of the GNU Affero General Public License along
 // with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// ============================================================
-//  Nextendo .nro — Splatoon 2 schedule installer via LayeredFS.
-//
-//  Downloads the per-title schedule zip from the account API:
-//      GET https://nextendo.network/api/bcat/<titleId>
-//  (streams bcat_store/<titleId>.zip, entries at the zip root:
-//   coopdata/ vsdata/ fesdata/) and extracts it into Atmosphere's
-//  LayeredFS override path:
-//      sdmc:/atmosphere/contents/<title_id>/romfs/DebugUnderPilot/bcat/
-//  for USA (01003BC0000A0000), EUR (0100F8F0000A2000) and JPN
-//  (01003C700009C800).
-//
-//  System/GameConfigSetting.xml (static game config, NOT in the zip) and
-//  dummy/ are still copied from the NRO's own romfs.
-// ============================================================
+// Planning Splatoon 2 : GET /api/bcat/<titleId> -> zip extrait dans le LayeredFS d'Atmosphere (USA, EUR, JPN).
+// System/GameConfigSetting.xml et dummy/ ne sont PAS dans le zip : ils viennent de la romfs du .nro.
 #include <switch.h>
 #include <string.h>
 #include <stdlib.h>
@@ -217,7 +204,7 @@ static int downloadZip(const char *titleIdLower) {
 }
 
 static bool extractZip(const char *dstBase) {
-    // Diagnostique : qu'y a-t-il reellement sur la SD ? (taille + signature PK)
+    // Diagnostic : taille reelle sur la SD + signature PK.
     struct stat zst;
     if (stat(ZIP_TMP, &zst) == 0) {
         logf_("  ZIP_TMP taille=%lld", (long long)zst.st_size);
@@ -239,9 +226,7 @@ static bool extractZip(const char *dstBase) {
 
     mz_zip_archive zip;
     memset(&zip, 0, sizeof(zip));
-    // Lecture en MEMOIRE (pas via fopen/fsdev) : le lecteur fichier de miniz depend de
-    // fseek/ftell sur la SD (cache fsdev) qui est une source connue d'echec illisible.
-    // 191 Ko ca passe facilement en heap; on extrait puis on libere.
+    // Lecture en MEMOIRE : le lecteur fichier de miniz depend de fseek/ftell sur le cache fsdev, source connue d'echecs illisibles.
     FILE *zr = fopen(ZIP_TMP, "rb");
     if (!zr) { logf_("  ECHEC fopen zip (mem)"); return false; }
     fseek(zr, 0, SEEK_END);
@@ -337,7 +322,7 @@ nextendo_bcat_result nextendo_bcat_install_s2(void) {
       else
           logf_("  DNS %s -> ECHEC (h_errno=%d)", BCAT_HOST, h_errno); }
 
-    // Download the EUR zip once and install it to every region's LayeredFS.
+    // Un seul zip EUR telecharge, installe dans le LayeredFS de toutes les regions.
     static const char EUR_ID[] = "0100F8F0000A2000";
     static const char *regionIds[] = { "01003BC0000A0000", "0100F8F0000A2000" };
 
