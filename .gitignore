@@ -4,6 +4,7 @@
 *.elf
 *.nacp
 *.map
+*.lst
 nextendo.nro
 /backups/
 
