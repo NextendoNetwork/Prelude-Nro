@@ -32,7 +32,9 @@ jobs:
       - name: Upload NRO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nextendo-${{ github.ref_name }}
+          # NOT github.ref_name: on a pull_request it expands to "<pr>/merge", and
+          # upload-artifact@v4 rejects any name containing a slash. run_id is always valid.
+          name: nextendo-${{ github.run_id }}
           path: nextendo.nro
           if-no-files-found: error
 

@@ -80,6 +80,33 @@ static Result ensureDir(const char *path) {
     return 0;
 }
 
+// Console firmware version, read once. Zeroes if setsys is unavailable.
+static void firmwareVersion(int *maj, int *min) {
+    static bool done = false;
+    static int  m = 0, n = 0;
+    if (!done) {
+        done = true;
+        if (R_SUCCEEDED(setsysInitialize())) {
+            SetSysFirmwareVersion fv;
+            if (R_SUCCEEDED(setsysGetFirmwareVersion(&fv))) { m = fv.major; n = fv.minor; }
+            setsysExit();
+        }
+    }
+    *maj = m; *min = n;
+}
+
+// Our disable_ca_verification patches are indexed by build id and do NOT cover 22.5.0 and up, so on
+// those firmwares TLS to our server is untrusted. A host we redirect but cannot serve over trusted TLS
+// is worse off than one we leave alone: it fails instead of working. Only hosts a game strictly needs
+// are worth that trade. Unknown firmware counts as NOT covered - losing a sync is recoverable, losing
+// sign-in is what got reported on 22.5.0.
+static bool caPatchesCoverThisFirmware(void) {
+    int maj = 0, min = 0;
+    firmwareVersion(&maj, &min);
+    if (maj == 0) return false;
+    return (maj < 22) || (maj == 22 && min < 5);
+}
+
 char *nextendo_hosts_build(const char *ip) {
     const char *nncs2_ip = NEXTENDO_SERVER_IP_NNCSD2;
     size_t cap = 4096;
@@ -138,6 +165,14 @@ char *nextendo_hosts_build(const char *ip) {
     // gamesync carries the lobby itself (KeepUserSession over TCP/7575) and escapes the *srv wildcard: without it the tenant answers but no match ever starts.
     snprintf(line, sizeof(line), "%s    *.npln.nintendo.net\n", ip);                     EMIT_H(line);
     snprintf(line, sizeof(line), "%s gamesync.npln.nintendo.net\n", ip);                 EMIT_H(line);
+
+    // BCAT (Splatoon 3 schedule sync). These end in .cdn.nintendo.net, which no wildcard above
+    // covers, so before v3.3.9 they resolved to the real Nintendo. Gated: see caPatchesCoverThisFirmware.
+    if (caPatchesCoverThisFirmware()) {
+        snprintf(line, sizeof(line), "%s bcat-data-lp1.cdn.nintendo.net\n", ip);   EMIT_H(line);
+        snprintf(line, sizeof(line), "%s bcat-list-lp1.cdn.nintendo.net\n", ip);   EMIT_H(line);
+        snprintf(line, sizeof(line), "%s bcat-topics-lp1.cdn.nintendo.net\n", ip); EMIT_H(line);
+    }
     // *.op2.nintendo.net removed: too broad, it caught subdomains the VPS does not serve -> 2219-4001 on ACNH.
 
     EMIT_H("\n# --- 2) NAT-check #2 : IP differente de nncs1 (sinon MK8 test-103) ---\n");
