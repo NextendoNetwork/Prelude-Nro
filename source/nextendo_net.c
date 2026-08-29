@@ -506,8 +506,9 @@ long net_https_get_to_file(const char *host, const char *path,
         // Follow one redirect (GitHub releases -> CDN)
         if (is_redirect && attempt == 0 && location[0]) {
             char new_host[256] = {0};
-            char new_path[2048] = {0};
-            if (sscanf(location, "https://%255[^/]%2047s", new_host, new_path) < 2)
+            char new_path[2048] = "/";
+            int matched = sscanf(location, "https://%255[^/]%2047s", new_host, new_path);
+            if (matched < 1)
                 return -1;
             strncpy(cur_host, new_host, sizeof(cur_host) - 1); cur_host[sizeof(cur_host)-1] = '\0';
             strncpy(cur_path, new_path, sizeof(cur_path) - 1); cur_path[sizeof(cur_path)-1] = '\0';

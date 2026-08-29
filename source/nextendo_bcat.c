@@ -259,7 +259,7 @@ static bool extractZip(const char *dstBase) {
 
     mz_uint n = mz_zip_reader_get_num_files(&zip);
     logf_("  zip: %u entree(s)", (unsigned)n);
-    if (n == 0) { mz_zip_reader_end(&zip); return false; }
+    if (n == 0) { mz_zip_reader_end(&zip); free(zbuf); return false; }
 
     bool allOk = true;
     for (mz_uint i = 0; i < n; i++) {
