@@ -57,12 +57,15 @@ If you are running your own server, the addresses Prelude redirects to live in
 
 Copyright (C) 2026 Nextendo Network.
 
-Prelude is free software, licensed under the **GNU Affero General Public License, version 3 or
-later**. You may use, study,
-share and modify it. If you distribute a modified version, or run one as a network service, you
-must release your changes under the same licence.
+Prelude is licensed under the **PolyForm Shield License 1.0.0**. You may use, study, share and
+modify it for any purpose, and distribute your changes — with one exception: you may not use it
+to provide a product that competes with Nextendo Network, or with any product Nextendo Network
+provides using it.
 
-See [LICENSE](LICENSE) for the full text, or <https://www.gnu.org/licenses/agpl-3.0.html>.
+See [LICENSE.md](LICENSE.md) for the full text, or
+<https://polyformproject.org/licenses/shield/1.0.0>.
+
+Required Notice: Copyright 2026 Nextendo Network
 
 This project is not affiliated with, endorsed by, or connected to Nintendo. "Nintendo" and
 "Nintendo Switch" are trademarks of Nintendo. Use it on hardware you own.
