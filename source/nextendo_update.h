@@ -562,7 +562,18 @@
 //           pose pour tout le monde. Sans risque pour qui n'a pas le jeu : Atmosphere
 //           indexe ces correctifs par identifiant de build.
 
-#define NEXTENDO_BUILD 65
+// build 66 : v3.4.4. SSBU Online Deluxe passe a la v1.4.2 (publiee le 2026-09-12).
+//           Correctif d'un plantage sur emulateur : le mod crashait en chargeant des
+//           matchs avec LLUltra / LessLag. Aucun changement dans le code du repo — seule
+//           la dependance a source fermee ssbusync.nro est mise a jour (note de saad-script).
+//
+//           Verifie par empreinte contre l'archive officielle du tag v1.4.2 : UN SEUL
+//           fichier differe, libssbusync.nro, et il change de contenu en gardant
+//           EXACTEMENT la meme taille (376832 octets). C'est la troisieme fois que ce
+//           piege se presente sur ce mod ; les six autres fichiers de l'archive sont
+//           octet pour octet identiques a ceux deja embarques.
+
+#define NEXTENDO_BUILD 66
 
 // Version SEMVER de CE build. Doit rester alignee avec APP_VERSION (Makefile).
 // Le compare a l'updater se fait en semver complet (maj.min.patch), pas avec
@@ -575,10 +586,10 @@
 #define NEXTENDO_VERSION_MAJOR 3
 #endif
 #ifndef NEXTENDO_VERSION_MINOR
-#define NEXTENDO_VERSION_MINOR 3
+#define NEXTENDO_VERSION_MINOR 4
 #endif
 #ifndef NEXTENDO_VERSION_PATCH
-#define NEXTENDO_VERSION_PATCH 9
+#define NEXTENDO_VERSION_PATCH 4
 #endif
 
 typedef struct {
