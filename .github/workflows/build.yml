@@ -1,12 +1,28 @@
+# ------------------------------------------------------------------
+# Build NRO — compila Prelude (nextendo.nro) y, en un tag v*, lo
+# adjunta a la release. Se dispara al:
+#   - hacer merge de un PR (push a main)
+#   - pushear un commit a main o a una rama arena/*
+#   - pushear un tag v*
+#   - abrir / actualizar un PR contra main
+#   - ejecutarlo a mano (workflow_dispatch)
+# ------------------------------------------------------------------
 name: Build NRO
 
 on:
   push:
-    branches: [main]
+    branches: [main, "arena/**"]
     tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -18,27 +34,68 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read version
+        id: version
+        run: |
+          APP_VERSION=$(sed -n 's/^APP_VERSION := *//p' Makefile)
+          echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "APP_VERSION from Makefile: ${APP_VERSION}"
+
+      - name: Check version alignment
+        run: |
+          APP_VERSION=$(sed -n 's/^APP_VERSION := *//p' Makefile)
+          MAJOR=$(sed -n 's/^#define NEXTENDO_VERSION_MAJOR *//p' source/nextendo_update.h)
+          MINOR=$(sed -n 's/^#define NEXTENDO_VERSION_MINOR *//p' source/nextendo_update.h)
+          PATCH=$(sed -n 's/^#define NEXTENDO_VERSION_PATCH *//p' source/nextendo_update.h)
+          FALLBACK="${MAJOR}.${MINOR}.${PATCH}"
+          echo "Makefile APP_VERSION             = ${APP_VERSION}"
+          echo "nextendo_update.h semver fallback = ${FALLBACK}"
+          if [ "${APP_VERSION}" != "${FALLBACK}" ]; then
+            echo "::error::Version mismatch between Makefile and nextendo_update.h"
+            exit 1
+          fi
+
+      - name: Check tag matches version
+        if: github.ref_type == 'tag'
+        run: |
+          APP_VERSION=$(sed -n 's/^APP_VERSION := *//p' Makefile)
+          if [ "v${APP_VERSION}" != "${{ github.ref_name }}" ]; then
+            echo "::error::Tag ${{ github.ref_name }} does not match APP_VERSION v${APP_VERSION}"
+            exit 1
+          fi
+
       - name: Install dependencies
         run: |
-          dkp-pacman -Syu --noconfirm \
-            switch-freetype \
-            switch-sdl2 \
-            switch-sdl2_mixer \
-            switch-mpg123
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            if dkp-pacman -Syyu --noconfirm; then ok=1; break; fi
+            echo "::warning::dkp-pacman sync failed (attempt ${attempt}); retrying..."
+            sleep 10
+          done
+          if [ "${ok}" -ne 1 ]; then
+            echo "::error::Could not sync devkitPro packages after 5 attempts"
+            exit 1
+          fi
+          dkp-pacman -S --needed --noconfirm switch-freetype switch-mpg123
 
       - name: Build
-        run: make -j$(nproc)
+        run: make -j"$(nproc)"
+
+      - name: Prepare versioned artifact
+        run: |
+          cp -f nextendo.nro "Prelude-v${{ steps.version.outputs.app_version }}.nro"
+          ls -l *.nro
 
       - name: Upload NRO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nextendo-${{ github.ref_name }}
-          path: nextendo.nro
+          name: Prelude-v${{ steps.version.outputs.app_version }}
+          path: Prelude-v${{ steps.version.outputs.app_version }}.nro
           if-no-files-found: error
 
-      - name: Upload NRO to release (if tagged)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload NRO to release
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: nextendo.nro
+          files: Prelude-v${{ steps.version.outputs.app_version }}.nro
           generate_release_notes: true
