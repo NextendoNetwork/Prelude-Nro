@@ -1002,7 +1002,8 @@ bool nextendo_ssbu_is_installed(void) {
 // ON COMPARE LE CONTENU, PAS LA TAILLE. Mesure du 2026-09-07 en passant le mod de la v1.4.0
 // a la v1.4.1 : libssbu_online_deluxe.nro et libssbusync.nro ont change de contenu en
 // gardant EXACTEMENT la meme taille, 1433600 et 376832 octets. Une comparaison par taille
-// n'aurait rien vu et le popup ne serait jamais apparu.
+// n'aurait rien vu et le popup ne serait jamais apparu. La v1.4.2 (2026-09-12) l'a encore
+// confirme : seul libssbusync.nro change, en gardant la encore ses 376832 octets.
 //
 // La taille sert quand meme de test rapide AVANT de lire : elle elimine la plupart des cas
 // sans toucher au contenu, et seuls les fichiers de meme taille sont lus en entier.
