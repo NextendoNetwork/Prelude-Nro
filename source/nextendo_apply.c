@@ -194,6 +194,18 @@ char *nextendo_hosts_build(const char *ip) {
     snprintf(line, sizeof(line), "%s bcat-data-lp1.cdn.nintendo.net\n", ip);   EMIT_H(line);
     snprintf(line, sizeof(line), "%s bcat-topics-lp1.cdn.nintendo.net\n", ip); EMIT_H(line);
 
+    // Diablo III — Demonware, pas NEX. Son domaine n'est PAS nintendo.*, donc aucun
+    // des wildcards ci-dessus ne le couvre : sans cette ligne la console parle au vrai
+    // Demonware d'Activision et ne voit jamais nos serveurs.
+    //
+    // Un seul joker suffit : auth (HTTPS 443), lobby (TCP 3074) et les sondes NAT
+    // (stun, UDP 3074) vivent tous sous demonware.net et se distinguent par le PORT,
+    // pas par l'hote. Le joker est sans risque ici, contrairement a *.op2.nintendo.net
+    // retire en v3.0.2 : demonware.net n'heberge aucun service qui doive rester chez
+    // Nintendo — tout ce qui s'y trouve doit venir chez nous.
+    EMIT_H("\n# --- Diablo III (Demonware, pas nintendo.*) ---\n");
+    snprintf(line, sizeof(line), "%s    *.demonware.net\n", ip);               EMIT_H(line);
+
     EMIT_H("\n# --- 2) NAT-check #2 : IP differente de nncs1 (sinon MK8 test-103) ---\n");
     snprintf(line, sizeof(line), "%s  nncs2-*.n.n.srv.nintendo.net\n", nncs2_ip); EMIT_H(line);
 
