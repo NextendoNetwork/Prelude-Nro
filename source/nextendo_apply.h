@@ -89,17 +89,31 @@ bool nextendo_account_link_is_recommended(void);
 bool nextendo_account_link_install(void);
 void nextendo_account_link_remove(void);
 
-// --- Etat des correctifs Splatoon 3 poses sur la carte SD. ---
-// Le jeu embarque sa propre pile TLS et refuse notre certificat sans ces correctifs :
-// sans eux, 2122-2403 des l'entree en ligne. Atmosphere les applique par identifiant de
-// build et NE DIT RIEN quand aucun ne correspond, d'ou l'interet de savoir au moins ce
-// qui est present sur la carte.
+// --- Etat des correctifs de jeux (Game Patches) poses sur la carte SD ---
+#define NEXTENDO_MAX_GAME_FOLDERS 8
+#define NEXTENDO_MAX_FOLDER_NAME  48
+#define NEXTENDO_MAX_GAMES        16
+
+typedef struct {
+    char gameName[64];
+    char folders[NEXTENDO_MAX_GAME_FOLDERS][NEXTENDO_MAX_FOLDER_NAME];
+    int  folderCount;
+    int  patchCount;
+} NextendoGamePatchStatus;
+
 typedef struct {
     int  onSd;        // correctifs presents sur la carte
     int  inRomfs;     // correctifs livres par ce .nro
     bool dnsMitmOn;   // enable_dns_mitm = 1 dans system_settings.ini
     bool hostsOk;     // les hosts portent bien notre IP
+    int  installedGameCount;
+    NextendoGamePatchStatus installedGames[NEXTENDO_MAX_GAMES];
 } NextendoS3Status;
+
+typedef struct {
+    const char *gameName;
+    const char *prefix;
+} GamePatchDef;
 
 void nextendo_s3_status(NextendoS3Status *out);
 bool nextendo_provision_all_public(void);

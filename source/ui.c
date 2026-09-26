@@ -383,10 +383,11 @@ int ui_pane_rows(int railSel, bool ssbuInstalled) {
         // pas dessine : la navigation fait paneSel % rows, et un zero serait une
         // division par zero — un plantage, pas une section vide.
         case RAIL_S3:   return 1;
+        case RAIL_S2:   return 2;                        // Splatoon 2 + Splatoon 3
         case RAIL_SMB35: return 2;   // BCAT + batailles speciales
         case RAIL_ACCOUNT: return 1; // Fallback de vinculacion
         case RAIL_LANG: return 5;                        // EN / ES / PT / FR / ZH
-        default:        return 1;                        // S2, drapeau : une action
+        default:        return 1;                        // drapeau : une action
     }
 }
 
@@ -476,7 +477,7 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
         // reellement actionnable, et il est le seul a porter ce style.
         u32 cInfo = packColor(theme_text2());
         u32 cWarn = packColor(theme_warn());
-        char ligne[192];
+        char ligne[256];
         bool aJour = (s3 && s3->onSd > 0 && s3->onSd >= s3->inRomfs);
 
         if (s3 && current == CHOICE_NINTENDO) {
@@ -490,18 +491,38 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
             snprintf(ligne, sizeof(ligne), lang_str(STR_S3_OK), s3->onSd);
             drawF(b, st, s_semi, x, y + FS_BODY, FS_BODY, cInfo, ligne);
         }
-        y += FS_BODY + SP_MD;
+        y += FS_BODY + SP_SM;
 
         if (s3 && !s3->dnsMitmOn && current != CHOICE_NINTENDO) {
             drawF(b, st, s_reg, x, y + FS_CAP, FS_CAP, cWarn, lang_str(STR_S3_DNS_OFF));
-            y += FS_CAP + SP_SM;
+            y += FS_CAP + 4;
         }
         drawF(b, st, s_reg, x, y + FS_CAP, FS_CAP, cInfo, lang_str(STR_S3_WHERE));
-        y += FS_CAP + SP_SM;
+        y += FS_CAP + 4;
         drawF(b, st, s_reg, x, y + FS_CAP, FS_CAP, cInfo, lang_str(STR_S3_LIMIT));
         y += FS_CAP + SP_SM;
-        drawF(b, st, s_reg, x, y + FS_CAP, FS_CAP, cInfo, lang_str(STR_S3_VERSION));
-        y += FS_CAP + SP_LG;
+
+        // Liste des jeux detectes avec leurs dossiers et nombre de patchs
+        if (s3 && current != CHOICE_NINTENDO && s3->installedGameCount > 0) {
+            for (int i = 0; i < s3->installedGameCount; i++) {
+                const NextendoGamePatchStatus *gp = &s3->installedGames[i];
+                char folderList[192] = "";
+                for (int f = 0; f < gp->folderCount; f++) {
+                    if (f > 0) strncat(folderList, ", ", sizeof(folderList) - strlen(folderList) - 1);
+                    strncat(folderList, "\"", sizeof(folderList) - strlen(folderList) - 1);
+                    strncat(folderList, gp->folders[f], sizeof(folderList) - strlen(folderList) - 1);
+                    strncat(folderList, "\"", sizeof(folderList) - strlen(folderList) - 1);
+                }
+                char patchStr[32];
+                snprintf(patchStr, sizeof(patchStr),
+                         lang_str(gp->patchCount == 1 ? STR_PATCH_COUNT_SINGULAR : STR_PATCH_COUNT_PLURAL),
+                         gp->patchCount);
+                snprintf(ligne, sizeof(ligne), "- %s (%s): %s", gp->gameName, patchStr, folderList);
+                drawF(b, st, s_reg, x, y + FS_CAP, FS_CAP, cInfo, ligne);
+                y += FS_CAP + 6;
+            }
+            y += SP_SM;
+        }
 
         // La SEULE ligne actionnable. En mode Nintendo elle n'apparait pas : ce mode
         // retire volontairement la pile de certificats, et un bouton qui la repose
@@ -512,7 +533,8 @@ void ui_draw_picker(int railSel, int paneSel, bool paneFocused, int current,
                           lang_str(STR_S3_REINSTALL_SUB));
 
     } else if (railSel == RAIL_S2) {
-        y = chromeRow(b, st, x, y, w, FOC(0), lang_str(STR_RAIL_S2), lang_str(STR_DESC_S2));
+        y = chromeRow(b, st, x, y, w, FOC(0), lang_str(STR_ITEM_S2), lang_str(STR_DESC_S2));
+        y = chromeRow(b, st, x, y, w, FOC(1), lang_str(STR_ITEM_S3), lang_str(STR_DESC_S3));
     } else if (railSel == RAIL_SMB35) {
         y = chromeRow(b, st, x, y, w, FOC(0), lang_str(STR_RAIL_SMB35), lang_str(STR_DESC_SMB35));
         // Seconde ligne : les batailles speciales. L'avertissement est SOUS le bouton et
@@ -763,6 +785,25 @@ void ui_draw_s2_info(void) {
 
     int x = SP_XL, y = BODY_Y + SP_LG;
     const StringID ln[4] = { STR_S2_DESC1, STR_S2_DESC2, STR_S2_DESC3, STR_S2_DESC4 };
+    for (int i = 0; i < 4; i++) {
+        drawF(b, st, s_reg, x, y + FS_BODY, FS_BODY, packColor(theme_text2()), lang_str(ln[i]));
+        y += SP_LG;
+    }
+
+    const Hint h[] = { { "A", lang_str(STR_SSBU_INSTALL) }, { "B", lang_str(STR_HINT_BACK) } };
+    chromeFooter(b, st, h, 2, NULL);
+    framebufferEnd(&s_fb);
+}
+
+// ------- Ecran d'explication "Planning en ligne Splatoon 3" -------
+void ui_draw_s3_info(void) {
+    u32 st;
+    u32 *b = (u32 *)framebufferBegin(&s_fb, &st);
+    chromeClear(b, st);
+    chromeHeader(b, st, lang_str(STR_S3_SCHEDULE_TITLE), NULL);
+
+    int x = SP_XL, y = BODY_Y + SP_LG;
+    const StringID ln[4] = { STR_S3_SCHEDULE_DESC1, STR_S3_SCHEDULE_DESC2, STR_S3_SCHEDULE_DESC3, STR_S3_SCHEDULE_DESC4 };
     for (int i = 0; i < 4; i++) {
         drawF(b, st, s_reg, x, y + FS_BODY, FS_BODY, packColor(theme_text2()), lang_str(ln[i]));
         y += SP_LG;

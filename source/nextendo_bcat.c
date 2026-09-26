@@ -49,6 +49,7 @@
 #define ROMFS_BCAT_BASE "romfs:/bcatdata"
 #define LAYEREDFS_BASE  "sdmc:/atmosphere/contents/%s/romfs"
 #define LOG_PATH        "sdmc:/nextendo_bcat.log"
+#define LOG_PATH_S3     "sdmc:/nextendo_bcat_s3.log"
 
 #define BCAT_ERR_WRITE  (-100)  // downloadZip: SD write failure (distinct from NET_ERR_*)
 
@@ -449,4 +450,66 @@ nextendo_bcat_result nextendo_bcat_install_s2(void) {
     if (g_log) { fclose(g_log); g_log = NULL; }
 
     return anyOk ? NB_OK : NB_WRITE_FAIL;
+}
+
+nextendo_bcat_result nextendo_bcat_install_s3(void) {
+    g_log = fopen(LOG_PATH_S3, "w");
+    logf_("=== Nextendo BCAT install S3 ===");
+
+    { struct hostent *he = gethostbyname(BCAT_HOST);
+      if (he && he->h_addr_list[0])
+          logf_("  DNS %s -> %s", BCAT_HOST, inet_ntoa(*(struct in_addr *)he->h_addr_list[0]));
+      else
+          logf_("  DNS %s -> ECHEC (h_errno=%d)", BCAT_HOST, h_errno); }
+
+    // Title ID Splatoon 3 (Global: 0100C2500FC20000)
+    // Puedes personalizar la URL o Title ID aqui:
+    static const char S3_ID[] = "0100C2500FC20000";
+
+    char s3Lower[32];
+    snprintf(s3Lower, sizeof(s3Lower), "%s", S3_ID);
+    toLowerInPlace(s3Lower);
+
+    logf_("--- telechargement S3 (%s) ---", S3_ID);
+    logf_("  GET /api/bcat/%s", s3Lower);
+
+    int rc = downloadZip(s3Lower);
+    if (rc == 204) {
+        logf_("  204 : aucun planning publie");
+        if (g_log) { fclose(g_log); g_log = NULL; }
+        return NB_NO_SCHEDULE;
+    }
+    if (rc != 0) {
+        logf_("  ECHEC telechargement (status=%d ssl_rc=0x%x)", rc, (unsigned)g_net_ssl_rc);
+        if (g_log) { fclose(g_log); g_log = NULL; }
+        if (rc == NET_ERR_TIMEOUT)  return NB_NET_TIMEOUT;
+        if (rc == NET_ERR_CONNECT)  return NB_NET_CONNECT;
+        if (rc == BCAT_ERR_WRITE)   return NB_WRITE_FAIL;
+        if (rc > 0)                 return NB_NET_HTTP_ERR;
+        return NB_NET_FAIL;
+    }
+
+    char romfsBase[FS_MAX_PATH];
+    snprintf(romfsBase, sizeof(romfsBase), LAYEREDFS_BASE, S3_ID);
+
+    char dstBase[FS_MAX_PATH];
+    snprintf(dstBase, sizeof(dstBase), "%s/DebugUnderPilot/bcat", romfsBase);
+
+    logf_("--- install S3 ---");
+    logf_("  dest: %s", dstBase);
+
+    char tree[FS_MAX_PATH];
+    snprintf(tree, sizeof(tree), "%s/DebugUnderPilot", romfsBase);
+    wipeTree(tree); rmdir(tree);
+
+    bool ok = extractZip(dstBase);
+    fsdevCommitDevice("sdmc");
+
+    remove(ZIP_TMP);
+    fsdevCommitDevice("sdmc");
+
+    logf_("=== resultat S3: %s ===", ok ? "OK" : "ECHEC");
+    if (g_log) { fclose(g_log); g_log = NULL; }
+
+    return ok ? NB_OK : NB_WRITE_FAIL;
 }

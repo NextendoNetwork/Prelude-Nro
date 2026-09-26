@@ -34,8 +34,13 @@
 #include "ui_theme.h"
 #include "lang.h"
 
-// Destination de l'installation BCAT en cours : false = Splatoon 2, true = SMB35.
-static bool g_bcatSmb35 = false;
+// Destination de l'installation BCAT en cours : 0 = Splatoon 2, 1 = Splatoon 3, 2 = SMB35.
+enum {
+    BCAT_TARGET_S2 = 0,
+    BCAT_TARGET_S3,
+    BCAT_TARGET_SMB35,
+};
+static int g_bcatTarget = BCAT_TARGET_S2;
 
 enum {
     SCREEN_PICKER, SCREEN_S2_INFO, SCREEN_S2_PROGRESS, SCREEN_S2_RESULT,
@@ -85,6 +90,8 @@ static void writeExitLog(int lastScreen, const char *lastTitle, const char *last
     fprintf(f, "last result msg : %s\n", lastMsg ? lastMsg : "");
     fprintf(f, "\n--- nextendo_bcat.log ---\n");
     appendFileToLog(f, "sdmc:/nextendo_bcat.log");
+    fprintf(f, "\n--- nextendo_bcat_s3.log ---\n");
+    appendFileToLog(f, "sdmc:/nextendo_bcat_s3.log");
     fprintf(f, "\n--- prelude_trace.txt ---\n");
     appendFileToLog(f, NEXTENDO_TRACE_PATH);
     fclose(f);
@@ -228,7 +235,7 @@ int main(int argc, char **argv) {
     // certificats, et la reposer en douce serait une faille, pas un confort.
     if (current == CHOICE_NEXTENDO) nextendo_provision_all_public();
 
-    NextendoS3Status s3;
+    static NextendoS3Status s3;
     nextendo_s3_status(&s3);
     int  sel    = (current == CHOICE_NEXTENDO) ? CHOICE_NINTENDO : CHOICE_NEXTENDO;
     int  railSel = RAIL_MODE;   // section du rail
@@ -396,13 +403,17 @@ int main(int argc, char **argv) {
                                 snprintf(status, sizeof(status), "%s", lang_str(STR_S3_DONE));
                             }
                             break;
-                        case RAIL_S2:   g_bcatSmb35 = false; screen = SCREEN_S2_INFO; break;
+                        case RAIL_S2:
+                            g_bcatTarget = (paneSel == 1) ? BCAT_TARGET_S3 : BCAT_TARGET_S2;
+                            screen = SCREEN_S2_INFO;
+                            break;
                         case RAIL_SMB35:
                             if (paneSel == 0) {
                                 // Pas d'ecran d'information intermediaire : il n'y a rien a
                                 // choisir ni a expliquer, contrairement a Splatoon 2 ou le
                                 // joueur voit d'abord ce qui va etre installe.
-                                g_bcatSmb35 = true; screen = SCREEN_S2_PROGRESS;
+                                g_bcatTarget = BCAT_TARGET_SMB35;
+                                screen = SCREEN_S2_PROGRESS;
                             } else {
                                 // Batailles speciales : bascule franche, sans confirmation. Un second
                                 // appui defait exactement ce que le premier a pose, et le panneau dit
@@ -603,7 +614,12 @@ int main(int argc, char **argv) {
             } else if (k & HidNpadButton_A) {
                 screen = SCREEN_S2_PROGRESS;
             }
-            if (screen == SCREEN_S2_INFO) ui_draw_s2_info();
+            if (screen == SCREEN_S2_INFO) {
+                if (g_bcatTarget == BCAT_TARGET_S3)
+                    ui_draw_s3_info();
+                else
+                    ui_draw_s2_info();
+            }
 
         } else if (screen == SCREEN_UPD_CONFIRM) {
             if (k & HidNpadButton_A) {
@@ -614,31 +630,50 @@ int main(int argc, char **argv) {
             if (screen == SCREEN_UPD_CONFIRM) ui_draw_upd_confirm(upd.maj, upd.min, upd.patch);
 
         } else if (screen == SCREEN_S2_PROGRESS) {
-            ui_draw_progress(lang_str(g_bcatSmb35 ? STR_STATUS_DOWNLOAD_SMB35 : STR_STATUS_DOWNLOAD_SCHEDULE));
+            StringID progStr = STR_STATUS_DOWNLOAD_SCHEDULE;
+            if (g_bcatTarget == BCAT_TARGET_SMB35) progStr = STR_STATUS_DOWNLOAD_SMB35;
+            else if (g_bcatTarget == BCAT_TARGET_S3) progStr = STR_STATUS_DOWNLOAD_SCHEDULE_S3;
+
+            ui_draw_progress(lang_str(progStr));
             svcSleepThread(150000000ULL);
             socketInitializeDefault();
             Result sslrc = sslInitialize(4);
-            // Meme ecran de progression et meme ecran de resultat pour les deux : seul
-            // l'installateur change. Dupliquer les ecrans pour une ligne de difference
-            // laisserait deux chemins a maintenir en parallele.
+            // Meme ecran de progression et meme ecran de resultat pour les differents
+            // jeux : seul l'installateur change.
             nextendo_bcat_result res = NB_NET_FAIL;
-            if (R_SUCCEEDED(sslrc))
-                res = g_bcatSmb35 ? nextendo_bcat_install_smb35() : nextendo_bcat_install_s2();
+            if (R_SUCCEEDED(sslrc)) {
+                if (g_bcatTarget == BCAT_TARGET_SMB35)
+                    res = nextendo_bcat_install_smb35();
+                else if (g_bcatTarget == BCAT_TARGET_S3)
+                    res = nextendo_bcat_install_s3();
+                else
+                    res = nextendo_bcat_install_s2();
+            }
             if (R_SUCCEEDED(sslrc)) sslExit();
             socketExit();
             rOk = (res == NB_OK);
             switch (res) {
                 case NB_OK:
-                    snprintf(rTitle, sizeof(rTitle), "%s", lang_str(g_bcatSmb35 ? STR_STATUS_SMB35_OK : STR_STATUS_SCHEDULE_OK));
-                    snprintf(rMsg, sizeof(rMsg), "%s", lang_str(g_bcatSmb35 ? STR_STATUS_SMB35_OK_DESC : STR_STATUS_SCHEDULE_OK_DESC));
+                    if (g_bcatTarget == BCAT_TARGET_SMB35) {
+                        snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_SMB35_OK));
+                        snprintf(rMsg, sizeof(rMsg), "%s", lang_str(STR_STATUS_SMB35_OK_DESC));
+                    } else if (g_bcatTarget == BCAT_TARGET_S3) {
+                        snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_SCHEDULE_OK));
+                        snprintf(rMsg, sizeof(rMsg), "%s", lang_str(STR_STATUS_SCHEDULE_S3_OK_DESC));
+                    } else {
+                        snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_SCHEDULE_OK));
+                        snprintf(rMsg, sizeof(rMsg), "%s", lang_str(STR_STATUS_SCHEDULE_OK_DESC));
+                    }
                     break;
                 case NB_NO_SCHEDULE:
-                    snprintf(rTitle, sizeof(rTitle), "%s", lang_str(g_bcatSmb35 ? STR_STATUS_NO_EVENT : STR_STATUS_NO_SCHEDULE));
-                    snprintf(rMsg, sizeof(rMsg), "%s", lang_str(g_bcatSmb35 ? STR_STATUS_NO_EVENT_DESC : STR_STATUS_NO_SCHEDULE_DESC));
+                    snprintf(rTitle, sizeof(rTitle), "%s", lang_str(g_bcatTarget == BCAT_TARGET_SMB35 ? STR_STATUS_NO_EVENT : STR_STATUS_NO_SCHEDULE));
+                    snprintf(rMsg, sizeof(rMsg), "%s", lang_str(g_bcatTarget == BCAT_TARGET_SMB35 ? STR_STATUS_NO_EVENT_DESC : STR_STATUS_NO_SCHEDULE_DESC));
                     break;
                 case NB_MOUNT_FAIL:
                     snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_MOUNT_FAIL));
-                    snprintf(rMsg, sizeof(rMsg), "%s (rc=0x%x)", lang_str(STR_STATUS_MOUNT_FAIL_DESC), g_last_rc);
+                    snprintf(rMsg, sizeof(rMsg), "%s (rc=0x%x)",
+                             lang_str(g_bcatTarget == BCAT_TARGET_S3 ? STR_STATUS_MOUNT_FAIL_DESC_S3 : STR_STATUS_MOUNT_FAIL_DESC),
+                             g_last_rc);
                     break;
                 case NB_NET_CONNECT:
                     snprintf(rTitle, sizeof(rTitle), "%s", lang_str(STR_STATUS_NET_CONNECT));

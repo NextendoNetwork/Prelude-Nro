@@ -43,6 +43,10 @@ typedef enum {
 // socketInitializeDefault() + sslInitialize() doivent etre actifs avant l'appel.
 nextendo_bcat_result nextendo_bcat_install_s2(void);
 
+// Installe le planning S3 dans le dossier LayeredFS d'Atmosphere.
+// socketInitializeDefault() + sslInitialize() doivent etre actifs avant l'appel.
+nextendo_bcat_result nextendo_bcat_install_s3(void);
+
 // Installe l'evenement Bataille Speciale de Super Mario Bros. 35 dans le dossier
 // LayeredFS d'Atmosphere. Meme canal que S2 (/api/bcat/<titleId>), destination
 // differente : la racine du romfs du jeu.

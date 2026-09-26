@@ -162,11 +162,12 @@ typedef enum {
 
     // --- Nouveau cromo (rail de navigation + barre de boutons) ---
     STR_RAIL_MODE,                    // "Mode"        entree du rail
-    STR_RAIL_S2,                      // "Splatoon 2"
+    STR_RAIL_S2,                      // "Splatoon 2 & 3"
     STR_RAIL_FLAG,                    // "Country"
     STR_RAIL_SSBU,                    // "Smash"       (L)
-    STR_RAIL_S3,                      // "Splatoon 3"  entree du rail
+    STR_RAIL_S3,                      // "Game Patches" entree du rail
     STR_RAIL_SMB35,                   // "Mario 35"    entree du rail
+#define STR_RAIL_PATCHES STR_RAIL_S3
     STR_DESC_SMB35,                   // description du panneau Mario 35
     STR_SMB35SP,                      // "Special Battle" ligne du panneau Mario 35
     STR_SMB35SP_ON,                   // description quand le mod est pose
@@ -207,6 +208,8 @@ typedef enum {
     STR_S3_REINSTALL,      // bouton : les reposer alors qu'ils sont deja la
     STR_S3_REINSTALL_SUB,  // sous-titre du bouton
     STR_S3_DONE,           // resultat : ecrits, il faut redemarrer
+    STR_PATCH_COUNT_SINGULAR, // "%d patch"
+    STR_PATCH_COUNT_PLURAL,   // "%d patches"
     STR_BADGE_ACTIVE,                 // "Active"      pastille du mode courant
     STR_HINT_APPLY,                   // "Apply"       barre de boutons
     STR_HINT_EXIT,                    // "Exit"
@@ -244,6 +247,19 @@ typedef enum {
     STR_ASK_B_NO,               // "B: No"
     STR_BACKUP_SAVED,           // toast/status apres copie
     STR_BACKUP_NONE,            // rien a copier (carte vierge, ou deja en mode Nextendo)
+
+    // --- Splatoon 2 & 3 separate buttons & schedule flow ---
+    STR_ITEM_S2,                // "Splatoon 2"
+    STR_ITEM_S3,                // "Splatoon 3"
+    STR_DESC_S3,                // "Downloads Splatoon 3 schedule..."
+    STR_S3_SCHEDULE_TITLE,      // "Splatoon 3 online schedule"
+    STR_S3_SCHEDULE_DESC1,
+    STR_S3_SCHEDULE_DESC2,
+    STR_S3_SCHEDULE_DESC3,
+    STR_S3_SCHEDULE_DESC4,
+    STR_STATUS_DOWNLOAD_SCHEDULE_S3, // "Downloading and installing Splatoon 3 schedule..."
+    STR_STATUS_SCHEDULE_S3_OK_DESC,  // "Old schedule replaced. Relaunch Splatoon 3 to apply."
+    STR_STATUS_MOUNT_FAIL_DESC_S3,   // "Launch Splatoon 3 once, then try again."
 
     STR_COUNT
 } StringID;

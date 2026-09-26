@@ -49,6 +49,9 @@ void ui_draw_confirm(int selection, bool warnNoEmummc);
 // Ecran d'explication "Planning en ligne Splatoon 2" (A = installer, B = retour).
 void ui_draw_s2_info(void);
 
+// Ecran d'explication "Planning en ligne Splatoon 3" (A = installer, B = retour).
+void ui_draw_s3_info(void);
+
 // Ecran de progression pendant l'installation (une ligne d'etat centree).
 void ui_draw_progress(const char *line);
 

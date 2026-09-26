@@ -58,8 +58,11 @@ LDFLAGS  = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $
 #---------------------------------------------------------------------------------
 # Link via pkg-config (.pc des portlibs) : liste EXACTE des codecs de SDL2_mixer
 # + deps FreeType, dans le bon ordre. Evite de deviner les noms de libs.
-PKGCONF := PKG_CONFIG_PATH=$(PORTLIBS)/lib/pkgconfig pkg-config
-LIBS := $(shell $(PKGCONF) --static --libs libmpg123 freetype2 2>/dev/null) -lnx
+LIBS := $(shell $(PKGCONF) --static --libs libmpg123 freetype2 2>/dev/null)
+ifeq ($(strip $(LIBS)),)
+	LIBS := -lmpg123 -lfreetype -lbz2 -lpng16 -lz -lharfbuzz -pthread -lm
+endif
+LIBS += -lnx
 
 #---------------------------------------------------------------------------------
 LIBDIRS := $(PORTLIBS) $(LIBNX)
